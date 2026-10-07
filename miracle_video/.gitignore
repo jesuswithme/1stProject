@@ -1,0 +1,9 @@
+*.mp4
+*.mp3
+*.m4a
+fonts/
+snaps/
+tts/
+*.log
+list.txt
+index.html

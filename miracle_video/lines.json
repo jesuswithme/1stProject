@@ -1,0 +1,104 @@
+[
+ {
+  "scene": "intro",
+  "text": "하루가 더해지는 기적|송은영",
+  "file": "tts/00.mp3",
+  "dur": 2.5778
+ },
+ {
+  "scene": "winter",
+  "text": "아픈 소식에|단숨에 겨울이 올 줄 알았는데",
+  "file": "tts/01.mp3",
+  "dur": 3.5444
+ },
+ {
+  "scene": "winter",
+  "text": "계절은 멈추지 않고|작은 빛 하나를 다시 건네주었네.",
+  "file": "tts/02.mp3",
+  "dur": 4.7333
+ },
+ {
+  "scene": "breath",
+  "text": "의사의 말보다 더 오래|숨결을 이어가는 엄마의 시간,",
+  "file": "tts/03.mp3",
+  "dur": 3.9778
+ },
+ {
+  "scene": "breath",
+  "text": "그 하루하루가|선물처럼 손바닥 위에 내려앉는다.",
+  "file": "tts/04.mp3",
+  "dur": 3.8
+ },
+ {
+  "scene": "confess",
+  "text": "“나는 오늘도 살아서 고맙다.”",
+  "file": "tts/05.mp3",
+  "dur": 2.2111
+ },
+ {
+  "scene": "confess",
+  "text": "엄마의 조용한 고백이|창가의 햇살에 스며들 때면",
+  "file": "tts/06.mp3",
+  "dur": 4.5889
+ },
+ {
+  "scene": "confess",
+  "text": "그 말 한마디가|평생 품고 싶은 기도가 된다.",
+  "file": "tts/07.mp3",
+  "dur": 3.4556
+ },
+ {
+  "scene": "why",
+  "text": "삶이 이렇게 그리운 줄,|이렇게 감사한 줄",
+  "file": "tts/08.mp3",
+  "dur": 3.1333
+ },
+ {
+  "scene": "why",
+  "text": "우린 왜|아플 때야 알게 되는지.",
+  "file": "tts/09.mp3",
+  "dur": 2.5222
+ },
+ {
+  "scene": "miracle",
+  "text": "하지만 이제야 비로소|우리는 깨닫는다.",
+  "file": "tts/10.mp3",
+  "dur": 2.9889
+ },
+ {
+  "scene": "miracle",
+  "text": "덧붙여진 하루가 기적이고",
+  "file": "tts/11.mp3",
+  "dur": 2.2111
+ },
+ {
+  "scene": "miracle",
+  "text": "숨 한 번도 축복이라는 걸.",
+  "file": "tts/12.mp3",
+  "dur": 2.3222
+ },
+ {
+  "scene": "embrace",
+  "text": "오늘을 다시 건네준 하늘에|엄마는 작은 미소로 답하고,",
+  "file": "tts/13.mp3",
+  "dur": 4.3778
+ },
+ {
+  "scene": "embrace",
+  "text": "나는 그 곁에서|하루를 함께 껴안는다.",
+  "file": "tts/14.mp3",
+  "dur": 3.6556
+ },
+ {
+  "scene": "love",
+  "text": "이 시간이 끝이 아니라|더 깊어지는 사랑이 되기를,",
+  "file": "tts/15.mp3",
+  "dur": 3.8556
+ },
+ {
+  "scene": "love",
+  "text": "하루가 더해질 때마다|우리가 서로를 더 오래 기억하기를.",
+  "file": "tts/16.mp3",
+  "dur": 4.4444
+ }
+]
