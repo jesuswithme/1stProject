@@ -1,0 +1,625 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>바울의 1차 전도 여행 — Reel</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+const W = 1920, H = 1080, CX = W / 2, CY = H / 2;
+const cv = document.getElementById('c');
+const ctx0 = cv.getContext('2d', { willReadFrequently: true });
+const ctxRef = { c: ctx0 };
+Object.defineProperty(window, 'ctx', { get: () => ctxRef.c });
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ramp = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, p) => a + (b - a) * p;
+const eOutExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+const eInExpo = x => x <= 0 ? 0 : Math.pow(2, 10 * x - 10);
+const eOutCubic = x => 1 - Math.pow(1 - x, 3);
+const eInCubic = x => x * x * x;
+const eInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eOutBack = (x, s = 1.70158) => 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2);
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u) * 2 - 1; };
+
+// ---------- palette ----------
+const GOLD = '#E8C37E', GOLD2 = '#F6DFAE', INK = '#05060A', PAPER = '#F3EBDD', BLOOD = '#B4232C';
+const F = (w, s, fam = 'S') => `${w} ${s}px ${fam}`;
+
+// ---------- hits (shared with audio) ----------
+const HITS = [[0.1,.3],[1.5,1],[3.2,.8],[3.86,1.1],[4.6,.7],[5.6,.9],[7.0,.7],[7.55,1.1],[8.0,.6],[8.4,.9],[8.95,.7],[9.1,.8],[9.25,1],[9.4,1.2],[10.6,.6],[12.0,1.3],[13.12,.5]];
+window.HITS = HITS;
+const env = (t, k, amp) => HITS.reduce((a, [ht, s]) => t >= ht ? a + s * amp * Math.exp(-(t - ht) * k) : a, 0);
+
+// ---------- text helpers ----------
+function layout(str, font, sp = 0) {
+  ctx.font = font; const ch = [...str];
+  const w = ch.map(c => ctx.measureText(c).width);
+  const total = w.reduce((a, b) => a + b, 0) + sp * (ch.length - 1);
+  return { ch, w, total };
+}
+// per-character animated text
+function chars(str, x, y, o) {
+  const { font, color = '#fff', t, start = 0, stagger = .04, dur = .5, dy = 0, dx = 0, blur = 0, scale = 1, sp = 0,
+    align = 'center', alpha = 1, ease = eOutExpo, rot = 0, glow = 0 } = o;
+  const L = layout(str, font, sp);
+  let cx = align === 'center' ? x - L.total / 2 : align === 'right' ? x - L.total : x;
+  ctx.save(); ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = color;
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+  L.ch.forEach((c, i) => {
+    const p = ease(ramp(t, start + i * stagger, start + i * stagger + dur));
+    const mid = cx + L.w[i] / 2; cx += L.w[i] + sp;
+    if (p <= 0 || c === ' ') return;
+    ctx.save(); ctx.globalAlpha = alpha * clamp(p * 1.4);
+    ctx.translate(mid + (1 - p) * dx, y + (1 - p) * dy);
+    const s = lerp(scale, 1, p); ctx.scale(s, s); ctx.rotate((1 - p) * rot);
+    const b = (1 - p) * blur; if (b > .4) ctx.filter = `blur(${b.toFixed(1)}px)`;
+    ctx.fillText(c, 0, 0); ctx.restore();
+  });
+  ctx.restore(); return L.total;
+}
+// characters rise out of a mask line
+function masked(str, x, y, size, o) {
+  const { font, color = '#fff', t, start = 0, stagger = .035, dur = .55, sp = 0, align = 'center', alpha = 1 } = o;
+  const L = layout(str, font, sp);
+  let cx = align === 'center' ? x - L.total / 2 : align === 'right' ? x - L.total : x;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * 1.05, W, size * 1.4); ctx.clip();
+  ctx.font = font; ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.globalAlpha = alpha;
+  L.ch.forEach((c, i) => {
+    const p = eOutExpo(ramp(t, start + i * stagger, start + i * stagger + dur));
+    const mid = cx + L.w[i] / 2; cx += L.w[i] + sp;
+    if (p <= 0) return;
+    ctx.fillText(c, mid, y + (1 - p) * size * 1.15);
+  });
+  ctx.restore(); return L.total;
+}
+function label(str, x, y, o = {}) {
+  const { size = 20, color = 'rgba(255,255,255,.55)', sp = 6, align = 'left', w = 500, fam = 'K', alpha = 1 } = o;
+  ctx.save(); ctx.font = F(w, size, fam); ctx.letterSpacing = sp + 'px'; ctx.fillStyle = color; ctx.textAlign = align;
+  ctx.globalAlpha = alpha; ctx.fillText(str, x, y); ctx.restore();
+}
+function typed(str, x, y, t, start, cps, o = {}) {
+  const n = Math.floor(clamp((t - start) * cps, 0, str.length));
+  if (n <= 0) return;
+  const s = [...str].slice(0, n).join('');
+  label(s + (n < str.length && Math.floor(t * 8) % 2 ? '▍' : ''), x, y, o);
+}
+// render something into a layer and run a light-sweep over it
+const layer = document.createElement('canvas'); layer.width = W; layer.height = H; const lc = layer.getContext('2d');
+function sweep(drawFn, p, angle = .35, width = 260, color = 'rgba(255,248,225,.95)') {
+  const saved = ctx; lc.clearRect(0, 0, W, H);
+  // draw into layer by temporarily swapping contexts
+  window.__swap(lc); drawFn(); window.__swap(saved);
+  if (p > 0 && p < 1) {
+    lc.save(); lc.globalCompositeOperation = 'source-atop';
+    const x = lerp(-width * 2, W + width * 2, p);
+    lc.translate(x, CY); lc.rotate(angle);
+    const g = lc.createLinearGradient(-width, 0, width, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, color); g.addColorStop(1, 'rgba(255,255,255,0)');
+    lc.fillStyle = g; lc.fillRect(-width, -H * 1.5, width * 2, H * 3); lc.restore();
+  }
+  ctx.drawImage(layer, 0, 0);
+}
+window.__swap = c => { ctxRef.c = c; };
+
+function glowDot(x, y, r, color, a = 1) {
+  const c = ctxRef.c; const g = c.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color.replace('A', a)); g.addColorStop(1, color.replace('A', 0));
+  c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+}
+function bg(c1, c2 = c1) {
+  const c = ctxRef.c; const g = c.createRadialGradient(CX, CY, 0, CX, CY, 1200);
+  g.addColorStop(0, c1); g.addColorStop(1, c2); c.fillStyle = g; c.fillRect(-200, -200, W + 400, H + 400);
+}
+function zoomAround(x, y, s) { const c = ctxRef.c; c.translate(x, y); c.scale(s, s); c.translate(-x, -y); }
+
+const R = rng(11);
+// ================= MAP ENGINE =================
+const K = 420, COS = Math.cos(36.5 * Math.PI / 180), LON0 = 28.0, LAT0 = 39.4, LON1 = 38.6, LAT1 = 33.0;
+const MW = Math.ceil((LON1 - LON0) * COS * K), MH = Math.ceil((LAT0 - LAT1) * K);
+const proj = (lon, lat) => [(lon - LON0) * COS * K, (LAT0 - lat) * K];
+const MAINLAND = [[28.0, 36.85], [28.5, 36.78], [29.1, 36.62], [29.64, 36.20], [30.15, 36.30], [30.40, 36.20], [30.57, 36.55], [30.62, 36.80], [30.70, 36.88], [31.0, 36.85], [31.39, 36.77], [32.0, 36.54], [32.5, 36.12], [32.80, 36.02], [33.3, 36.12], [33.93, 36.30], [34.3, 36.6], [34.64, 36.80], [35.0, 36.75], [35.4, 36.58], [35.79, 36.77], [36.05, 36.95], [36.2, 36.75], [36.17, 36.58], [35.88, 36.41], [35.95, 36.08], [35.78, 35.52], [35.88, 34.89], [35.84, 34.44], [35.50, 33.90], [35.25, 33.0], [LON1, 33.0], [LON1, LAT0], [LON0, LAT0]];
+const CYPRUS = [[32.28, 35.08], [32.42, 34.75], [33.04, 34.67], [33.63, 34.92], [34.08, 34.96], [33.95, 35.12], [34.59, 35.69], [34.0, 35.45], [33.32, 35.34], [32.92, 35.40], [32.95, 35.20], [32.42, 35.04]];
+const LAKES = [[31.5, 37.75, .16, .1], [30.85, 37.95, .07, .2], [33.4, 38.75, .25, .2], [31.6, 38.45, .07, .06]];
+const hash2 = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+const vn = (x, y) => { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  return lerp(lerp(hash2(i, j), hash2(i + 1, j), u), lerp(hash2(i, j + 1), hash2(i + 1, j + 1), u), v); };
+const fbm = (x, y) => vn(x, y) * .5 + vn(x * 2.1, y * 2.1) * .25 + vn(x * 4.3, y * 4.3) * .125 + vn(x * 8.7, y * 8.7) * .0625;
+const TAURUS = [[29.6, 36.9], [30.3, 37.1], [30.9, 37.3], [31.6, 37.15], [32.6, 36.8], [33.6, 37.0], [34.6, 37.3], [35.4, 37.6]];
+function distPoly(x, y, P) { let m = 1e9; for (let i = 0; i < P.length - 1; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1]; const dx = bx - ax, dy = by - ay; const h = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)); m = Math.min(m, Math.hypot(x - ax - dx * h, y - ay - dy * h)); } return m; }
+const gauss = (d, w) => Math.exp(-(d * d) / (w * w));
+function height(lon, lat) {
+  let h = .32 * fbm(lon * 1.6, lat * 1.6);
+  h += 1.0 * gauss(distPoly(lon, lat, TAURUS), .33) * (.7 + .5 * fbm(lon * 3, lat * 3));
+  h += .45 * clamp((lat - 37.3) / .6) * (.8 + .4 * fbm(lon * 2, lat * 2));
+  h += .7 * gauss(distPoly(lon, lat, [[36.2, 36.3], [36.4, 37.2]]), .25);
+  h += .8 * gauss(Math.hypot(lon - 32.9, lat - 34.95), .28) + .5 * gauss(distPoly(lon, lat, [[32.95, 35.3], [34.1, 35.4]]), .1);
+  return h;
+}
+function polyPath(c, P) { c.beginPath(); P.forEach(([lo, la], i) => { const [x, y] = proj(lo, la); i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.closePath(); }
+const mapC = document.createElement('canvas'); mapC.width = MW; mapC.height = MH;
+function buildMap() {
+  const c = mapC.getContext('2d');
+  const sg = c.createLinearGradient(0, 0, MW, MH); sg.addColorStop(0, '#0a1a26'); sg.addColorStop(1, '#040c14');
+  c.fillStyle = sg; c.fillRect(0, 0, MW, MH);
+  c.fillStyle = 'rgba(140,190,220,.05)'; for (let y = 0; y < MH; y += 9) c.fillRect(0, y, MW, 1.2);
+  // coastal water rings
+  for (const [w, a] of [[46, .035], [30, .05], [16, .07], [7, .1]]) {
+    c.lineWidth = w; c.strokeStyle = `rgba(120,190,230,${a})`; c.lineJoin = 'round';
+    polyPath(c, MAINLAND); c.stroke(); polyPath(c, CYPRUS); c.stroke();
+  }
+  // land
+  c.save(); polyPath(c, MAINLAND); polyPath(c, CYPRUS);
+  c.beginPath(); for (const P of [MAINLAND, CYPRUS]) P.forEach(([lo, la], i) => { const [x, y] = proj(lo, la); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+  c.clip();
+  const lg = c.createLinearGradient(0, MH, 0, 0); lg.addColorStop(0, '#1b150d'); lg.addColorStop(1, '#120e09');
+  c.fillStyle = lg; c.fillRect(0, 0, MW, MH);
+  // contours (marching squares)
+  const st = 7, gw = Math.ceil(MW / st) + 1, gh = Math.ceil(MH / st) + 1, g = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) g[j * gw + i] = height(LON0 + i * st / (COS * K), LAT0 - j * st / K);
+  for (let L = 1; L <= 15; L++) {
+    const lv = L * .1, major = L % 5 === 0;
+    c.strokeStyle = `rgba(232,195,126,${(major ? .3 : .11) + L * .012})`; c.lineWidth = major ? 1.6 : .9; c.beginPath();
+    for (let j = 0; j < gh - 1; j++) for (let i = 0; i < gw - 1; i++) {
+      const a = g[j * gw + i], b = g[j * gw + i + 1], cc = g[(j + 1) * gw + i + 1], d = g[(j + 1) * gw + i];
+      const idx = (a > lv) << 3 | (b > lv) << 2 | (cc > lv) << 1 | (d > lv); if (idx === 0 || idx === 15) continue;
+      const x = i * st, y = j * st, f = (p, q) => (lv - p) / (q - p);
+      const T = [x + f(a, b) * st, y], Rr = [x + st, y + f(b, cc) * st], B = [x + f(d, cc) * st, y + st], Lf = [x, y + f(a, d) * st];
+      const seg = { 1: [[Lf, B]], 2: [[B, Rr]], 3: [[Lf, Rr]], 4: [[T, Rr]], 5: [[T, Lf], [B, Rr]], 6: [[T, B]], 7: [[T, Lf]], 8: [[T, Lf]], 9: [[T, B]], 10: [[T, Rr], [Lf, B]], 11: [[T, Rr]], 12: [[Lf, Rr]], 13: [[B, Rr]], 14: [[Lf, B]] }[idx];
+      for (const [p, q] of seg) { c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); }
+    }
+    c.stroke();
+  }
+  // hill shading glow on high ground
+  c.restore();
+  for (const [lo, la, rx, ry] of LAKES) { const [x, y] = proj(lo, la); c.fillStyle = '#0b1c28'; c.strokeStyle = 'rgba(150,200,230,.35)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(x, y, rx * COS * K, ry * K, -.5, 0, 7); c.fill(); c.stroke(); }
+  c.strokeStyle = 'rgba(246,223,174,.75)'; c.lineWidth = 1.6; polyPath(c, MAINLAND); c.stroke(); polyPath(c, CYPRUS); c.stroke();
+  // graticule
+  c.strokeStyle = 'rgba(255,255,255,.06)'; c.lineWidth = 1; c.font = F(400, 15, 'K'); c.fillStyle = 'rgba(255,255,255,.25)';
+  for (let lo = 29; lo <= 37; lo++) { const [x] = proj(lo, 0); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, MH); c.stroke(); c.fillText(lo + '°E', x + 6, MH - 20); }
+  for (let la = 34; la <= 39; la++) { const [, y] = proj(0, la); c.beginPath(); c.moveTo(0, y); c.lineTo(MW, y); c.stroke(); c.fillText(la + '°N', 20, y - 6); }
+  // regions
+  c.textAlign = 'center';
+  for (const [ko, en, lo, la, s] of [['구브로', 'CYPRUS', 33.25, 35.17, 30], ['밤빌리아', 'PAMPHYLIA', 31.55, 37.05, 26], ['비시디아', 'PISIDIA', 30.25, 37.62, 26], ['루가오니아', 'LYCAONIA', 33.35, 38.15, 26], ['길리기아', 'CILICIA', 34.75, 37.25, 26], ['시리아', 'SYRIA', 36.9, 35.3, 26], ['지중해', 'MARE INTERNUM', 31.3, 35.45, 34]]) {
+    const [x, y] = proj(lo, la); c.font = F(600, s); c.letterSpacing = (s * .55) + 'px'; c.fillStyle = 'rgba(246,223,174,.22)'; c.fillText(ko, x, y);
+    c.font = F(500, 13, 'K'); c.letterSpacing = '7px'; c.fillStyle = 'rgba(246,223,174,.2)'; c.fillText(en, x, y + 26);
+  }
+  c.letterSpacing = '0px';
+}
+// route
+function catmull(P, n = 14) {
+  if (P.length < 3) return P;
+  const out = [], E = [P[0], ...P, P[P.length - 1]];
+  for (let i = 1; i < E.length - 2; i++) for (let k = 0; k < n; k++) {
+    const t = k / n, [p0, p1, p2, p3] = [E[i - 1], E[i], E[i + 1], E[i + 2]], t2 = t * t, t3 = t2 * t;
+    out.push([0, 1].map(d => .5 * (2 * p1[d] + (-p0[d] + p2[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (-p0[d] + 3 * p1[d] - 3 * p2[d] + p3[d]) * t3)));
+  }
+  out.push(P[P.length - 1]); return out;
+}
+function arc(a, b, bend = .2, n = 50) {
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1];
+  const cx = mx - dy * bend, cy = my + dx * bend;
+  return Array.from({ length: n + 1 }, (_, i) => { const t = i / n; return [lerp(lerp(a[0], cx, t), lerp(cx, b[0], t), t), lerp(lerp(a[1], cy, t), lerp(cy, b[1], t), t)]; });
+}
+const LEGDEF = [
+  ['land', [[36.16, 36.20], [35.93, 36.12]], 1.7, 1.95, 25],
+  ['sea', [[35.93, 36.12], [33.90, 35.18]], 1.95, 2.6, 210, -.18],
+  ['land', [[33.90, 35.18], [33.62, 34.95], [33.05, 34.70], [32.42, 34.76]], 2.6, 3.15, 150],
+  ['sea', [[32.42, 34.76], [30.85, 36.96]], 4.65, 5.05, 280, .15],
+  ['land', [[30.85, 36.96], [30.95, 37.35], [30.92, 37.85], [31.19, 38.31]], 5.05, 5.5, 160],
+  ['land', [[31.19, 38.31], [31.8, 38.15], [32.48, 37.87]], 7.0, 7.4, 145],
+  ['land', [[32.48, 37.87], [32.45, 37.58]], 7.4, 7.6, 35],
+  ['land', [[32.45, 37.58], [32.9, 37.42], [33.37, 37.35]], 10.6, 10.85, 95],
+  ['ret', [[33.37, 37.35], [32.9, 37.42], [32.45, 37.58], [32.48, 37.87], [31.8, 38.15], [31.19, 38.31], [30.92, 37.85], [30.95, 37.35], [30.85, 36.96]], 10.85, 11.35, 430],
+  ['land', [[30.85, 36.96], [30.70, 36.88]], 11.35, 11.45, 15],
+  ['sea', [[30.70, 36.88], [31.5, 36.45], [33.0, 35.85], [34.6, 35.95], [35.6, 36.03], [35.93, 36.12], [36.16, 36.20]], 11.45, 11.95, 560],
+];
+const LEGS = LEGDEF.map(([type, ll, t0, t1, km, bend]) => {
+  let P = ll.map(([lo, la]) => proj(lo, la));
+  P = type === 'sea' && P.length === 2 ? arc(P[0], P[1], bend) : catmull(P);
+  if (type === 'ret') P = P.map((p, i) => { const q = P[Math.min(P.length - 1, i + 1)], o = P[Math.max(0, i - 1)]; const dx = q[0] - o[0], dy = q[1] - o[1], l = Math.hypot(dx, dy) || 1; return [p[0] - dy / l * 9, p[1] + dx / l * 9]; });
+  const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  return { type, P, cum, len: cum[cum.length - 1], t0, t1, km };
+});
+const TOTALKM = LEGS.reduce((a, l) => a + l.km, 0);
+const legP = (L, t) => eInOut(ramp(t, L.t0, L.t1));
+function pointAt(L, p) {
+  const d = p * L.len; let i = 1; while (i < L.cum.length - 1 && L.cum[i] < d) i++;
+  const f = (d - L.cum[i - 1]) / ((L.cum[i] - L.cum[i - 1]) || 1);
+  return { x: lerp(L.P[i - 1][0], L.P[i][0], f), y: lerp(L.P[i - 1][1], L.P[i][1], f), i, ang: Math.atan2(L.P[i][1] - L.P[i - 1][1], L.P[i][0] - L.P[i - 1][0]) };
+}
+const CITIES = [
+  ['수리아 안디옥', 'ANTIOCH', 36.16, 36.20, 1.55, 1], ['실루기아', 'SELEUCIA', 35.93, 36.12, 1.95, -1], ['살라미', 'SALAMIS', 33.90, 35.18, 2.6, 1],
+  ['바보', 'PAPHOS', 32.42, 34.76, 3.15, -1], ['버가', 'PERGA', 30.85, 36.96, 5.05, 1], ['비시디아 안디옥', 'PISIDIAN ANTIOCH', 31.19, 38.31, 5.5, 1],
+  ['이고니온', 'ICONIUM', 32.48, 37.87, 7.4, 1], ['루스드라', 'LYSTRA', 32.45, 37.58, 7.6, -1], ['더베', 'DERBE', 33.37, 37.35, 10.85, 1], ['앗달리아', 'ATTALIA', 30.70, 36.88, 11.45, -1]
+].map(([ko, en, lo, la, t, side]) => ({ ko, en, xy: proj(lo, la), t, side, lo, la }));
+
+function camAt(t, keys) {
+  let i = 0; while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
+  const [ta, la, pa, za] = keys[i], [tb, lb, pb, zb] = keys[i + 1], e = eInOut(ramp(t, ta, tb));
+  const [xa, ya] = proj(la, pa), [xb, yb] = proj(lb, pb);
+  return { x: lerp(xa, xb, e), y: lerp(ya, yb, e), z: Math.exp(lerp(Math.log(za), Math.log(zb), e)) };
+}
+function drawMap(t, cam, opts = {}) {
+  const c = ctxRef.c, z = cam.z, S = (x, y) => [(x - cam.x) * z + CX, (y - cam.y) * z + CY];
+  c.fillStyle = '#040c14'; c.fillRect(-200, -200, W + 400, H + 400);
+  c.save(); c.translate(CX, CY); c.scale(z, z); c.translate(-cam.x, -cam.y);
+  c.drawImage(mapC, 0, 0);
+  // route
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  for (const L of LEGS) {
+    const p = legP(L, t); if (p <= 0) continue;
+    const d = p * L.len; c.beginPath(); c.moveTo(L.P[0][0], L.P[0][1]);
+    for (let i = 1; i < L.P.length; i++) { if (L.cum[i] <= d) c.lineTo(L.P[i][0], L.P[i][1]); else { const f = (d - L.cum[i - 1]) / (L.cum[i] - L.cum[i - 1]); c.lineTo(lerp(L.P[i - 1][0], L.P[i][0], f), lerp(L.P[i - 1][1], L.P[i][1], f)); break; } }
+    const col = L.type === 'ret' ? '243,235,221' : '232,195,126';
+    c.setLineDash([]); c.strokeStyle = `rgba(${col},.16)`; c.lineWidth = 12 / z; c.stroke();
+    if (L.type === 'sea') { c.setLineDash([12 / z, 10 / z]); c.lineDashOffset = -t * 60 / z; }
+    else if (L.type === 'ret') { c.setLineDash([3 / z, 7 / z]); }
+    c.strokeStyle = `rgba(${col},${L.type === 'ret' ? .9 : 1})`; c.lineWidth = (L.type === 'ret' ? 3 : 3.4) / z; c.stroke(); c.setLineDash([]);
+  }
+  c.restore();
+  // cities
+  for (const C of CITIES) {
+    const a = ramp(t, C.t - .05, C.t + .2); if (a <= 0 || (opts.hideBefore && C.t < opts.hideBefore && !opts.showOld)) continue;
+    const [x, y] = S(...C.xy), e = eOutBack(a);
+    c.save(); c.globalCompositeOperation = 'lighter'; glowDot(x, y, 40 * e, 'rgba(255,210,140,A)', .5); c.restore();
+    const ring = (t - C.t) * 1.2 % 1; c.strokeStyle = `rgba(232,195,126,${(1 - ring) * .6 * a})`; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 8 + ring * 34, 0, 7); c.stroke();
+    if (opts.church && t > C.t + .15) { c.strokeStyle = `rgba(255,240,210,${.8 * ramp(t, opts.church, opts.church + .3)})`; c.beginPath(); c.moveTo(x, y - 30); c.lineTo(x, y - 14); c.moveTo(x - 6, y - 25); c.lineTo(x + 6, y - 25); c.stroke(); }
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, 6 * e, 0, 7); c.fill(); c.strokeStyle = GOLD; c.lineWidth = 2; c.stroke();
+    const lx = x + C.side * 30, ly = y - 26; const la = ramp(t, C.t, C.t + .25);
+    c.strokeStyle = `rgba(255,255,255,${.4 * la})`; c.lineWidth = 1; c.beginPath(); c.moveTo(x + C.side * 8, y - 6); c.lineTo(lx, ly + 6); c.lineTo(lx + C.side * 14 * la, ly + 6); c.stroke();
+    chars(C.ko, lx + C.side * 18, ly, { font: F(700, 28), t, start: C.t, stagger: .025, dur: .3, dy: 10, align: C.side > 0 ? 'left' : 'right', color: '#fff' });
+    label(C.en, lx + C.side * 18, ly + 22, { size: 12, sp: 5, align: C.side > 0 ? 'left' : 'right', color: GOLD, alpha: la, w: 600 });
+  }
+  // traveller head
+  for (const L of LEGS) {
+    if (t < L.t0 || t > L.t1 + .08) continue;
+    const q = pointAt(L, legP(L, t)), [x, y] = S(q.x, q.y);
+    c.save(); c.globalCompositeOperation = 'lighter'; glowDot(x, y, 70, 'rgba(255,220,150,A)', .55); glowDot(x, y, 16, 'rgba(255,255,255,A)', 1); c.restore();
+    if (L.type === 'sea') { c.save(); c.translate(x, y - 26); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -22); c.lineTo(14, 4); c.lineTo(0, 4); c.closePath(); c.fill(); c.fillStyle = GOLD; c.fillRect(-14, 7, 28, 5); c.restore(); }
+    const lon = LON0 + q.x / (COS * K), lat = LAT0 - q.y / K;
+    label(`${lat.toFixed(3)}°N  ${lon.toFixed(3)}°E`, x + 34, y + 40, { size: 13, sp: 3, color: 'rgba(255,255,255,.75)', w: 500 });
+  }
+  // km counter
+  const km = LEGS.reduce((a, L) => a + L.km * legP(L, t), 0);
+  c.save(); c.fillStyle = 'rgba(4,10,16,.6)'; c.fillRect(70, H - 240, 360, 140); c.fillStyle = GOLD; c.fillRect(70, H - 240, 3, 140); c.restore();
+  label('이동 거리 · 추정', 100, H - 202, { size: 15, sp: 5, color: GOLD, w: 600 });
+  label(`${Math.round(km).toLocaleString()}`, 100, H - 128, { size: 64, sp: 0, color: '#fff', w: 800, fam: 'K' });
+  label('km', 100 + layout(`${Math.round(km).toLocaleString()}`, F(800, 64, 'K')).total + 12, H - 130, { size: 26, sp: 2, color: 'rgba(255,255,255,.6)', w: 400 });
+  return S;
+}
+
+// ================= other precomputes =================
+const crowd = Array.from({ length: 150 }, (_, i) => { const a = R() * Math.PI * 2, r = Math.sqrt(R()) * 420; return { x: CX + Math.cos(a) * r * 1.3, y: 760 + Math.sin(a) * r * .45, ph: R() * 6, ra: R() * Math.PI * 2 }; });
+const fib = Array.from({ length: 1600 }, (_, i) => { const y = 1 - (i + .5) / 1600 * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963; return [Math.cos(th) * r, y, Math.sin(th) * r]; });
+const stones = [[-.95, -.6, 820, 470], [1.1, -.4, 1150, 560], [-.9, .7, 900, 640], [1.0, .8, 1040, 430]].map(([sx, sy, ix, iy], k) => ({
+  sx: CX + sx * 1300, sy: CY + sy * 900, ix, iy, t: .95 + k * .15, rot: R() * 6, pts: Array.from({ length: 9 }, (_, j) => (40 + R() * 35) * (j % 2 ? .85 : 1)),
+  cracks: Array.from({ length: 9 }, () => { let a = R() * Math.PI * 2, x = 0, y = 0; const seg = [[0, 0]]; for (let s = 0; s < 6; s++) { a += (R() - .5) * .8; const l = 20 + R() * 60; x += Math.cos(a) * l; y += Math.sin(a) * l; seg.push([x, y]); } return seg; })
+}));
+const motes = Array.from({ length: 160 }, () => ({ a: R() * Math.PI * 2, s: .3 + R(), z0: R(), c: R() }));
+const layer2 = document.createElement('canvas'); layer2.width = W; layer2.height = H; const l2 = layer2.getContext('2d');
+function into(cv2, fn) { const cc = cv2.getContext('2d'); const prev = ctxRef.c; cc.setTransform(1, 0, 0, 1, 0, 0); cc.clearRect(0, 0, W, H); ctxRef.c = cc; fn(); ctxRef.c = prev; }
+
+// ================= SCENES =================
+function sceneCall(t) {
+  const c = ctxRef.c; bg('#0f0d16', '#020203');
+  const zoom = eInExpo(ramp(t, 1.15, 1.5)); c.save(); zoomAround(CX, 560, 1 + zoom * 10);
+  const rise = eInOut(ramp(t, .35, .85)), ring = eInOut(ramp(t, .6, 1.05));
+  const chosen = [crowd[3], crowd[7]], tgt = [[900, 560], [1020, 560]];
+  crowd.forEach((p, i) => {
+    const k = chosen.indexOf(p); let x = p.x + Math.sin(t * 2 + p.ph) * 4, y = p.y + Math.cos(t * 1.7 + p.ph) * 3;
+    if (k >= 0) { x = lerp(x, tgt[k][0], rise); y = lerp(y, tgt[k][1], rise); }
+    else if (i < 40) { const rx = CX + Math.cos(p.ra) * 175, ry = 560 + Math.sin(p.ra) * 175; x = lerp(x, rx, ring); y = lerp(y, ry, ring);
+      if (ring > .3) { c.strokeStyle = `rgba(232,195,126,${.12 * ring})`; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y); c.lineTo(CX, 560); c.stroke(); } }
+    const big = k >= 0; c.save(); c.globalCompositeOperation = 'lighter';
+    glowDot(x, y, big ? 60 + 40 * rise : 14, big ? 'rgba(255,215,150,A)' : 'rgba(200,190,255,A)', big ? .7 : .35 * ramp(t, 0, .3));
+    glowDot(x, y, big ? 9 : 3, 'rgba(255,255,255,A)', big ? 1 : .6); c.restore();
+  });
+  [['바나바', 900], ['사울', 1020]].forEach(([n, x]) => label(n, x, 615, { size: 18, sp: 4, align: 'center', color: GOLD2, alpha: ramp(t, .7, .9), w: 600 }));
+  c.restore();
+  c.save(); c.globalAlpha = 1 - zoom;
+  label('수 리 아  안 디 옥  ·  A D  4 6', CX, 140, { size: 18, sp: 6, align: 'center', color: 'rgba(255,255,255,.5)', alpha: ramp(t, .05, .3) });
+  chars('성령이 이르시되', CX, 215, { font: F(400, 40, 'K'), t, start: .1, stagger: .03, dur: .4, dy: -12, sp: 8, color: GOLD });
+  sweep(() => chars('따로 세우라', CX, 370, { font: F(900, 150), t, start: .3, stagger: .06, dur: .55, dy: 70, blur: 20, color: '#fff' }), ramp(t, .7, 1.2));
+  label('바나바와 사울을 내가 불러 시키는 일을 위하여  —  행 13:2', CX, 445, { size: 22, sp: 2, align: 'center', alpha: ramp(t, .55, .85), w: 300, color: 'rgba(255,255,255,.75)' });
+  c.restore();
+  c.fillStyle = `rgba(255,236,200,${zoom})`; c.fillRect(0, 0, W, H);
+}
+function sceneSail(t) {
+  const T = t + 1.5;
+  drawMap(T, camAt(T, [[1.5, 36.05, 36.15, 2.3], [2.0, 35.0, 35.65, 1.0], [2.7, 33.8, 35.25, 1.1], [3.2, 33.0, 35.0, 1.3]]));
+  chapter(T, 1.6, '01', '실루기아에서 배로 구브로에', '행 13:4');
+}
+function chapter(T, st, num, txt, ref, fade = 1) {
+  const c = ctxRef.c, a = ramp(T, st, st + .25) * fade;
+  c.save(); c.globalAlpha = a; c.fillStyle = 'rgba(4,10,16,.72)'; const w = layout(txt, F(700, 36)).total + 200;
+  c.fillRect(70, 110, w * eOutExpo(a), 92); c.restore();
+  label(num, 100, 172, { size: 44, sp: 0, color: GOLD, w: 900, fam: 'K', alpha: a });
+  chars(txt, 172, 168, { font: F(700, 36), t: T, start: st + .05, stagger: .02, dur: .3, dx: -20, align: 'left', color: '#fff', alpha: fade });
+  label(ref, 174 + layout(txt, F(700, 36)).total + 20, 166, { size: 18, sp: 3, color: 'rgba(255,255,255,.55)', alpha: ramp(T, st + .2, st + .4) * fade });
+}
+function glitch(fn, amt, seed) {
+  into(layer2, fn); const c = ctxRef.c;
+  if (amt <= 0) { c.drawImage(layer2, 0, 0); return; }
+  const r = rng(seed); let y = 0;
+  while (y < H) { const h = 8 + r() * 70, dx = (r() - .5) * 260 * amt * (r() < .5 ? 1 : .2);
+    c.drawImage(layer2, 0, y, W, h, dx, y, W, h);
+    if (r() < .3 * amt) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = .6; c.drawImage(layer2, 0, y, W, h, dx + 18 * amt, y, W, h); c.restore(); }
+    y += h; }
+}
+function sceneName(t) {
+  const c = ctxRef.c; bg('#0a0b0f', '#000');
+  if (t < .66) {
+    label('구 브 로  ·  바 보', CX, 160, { size: 18, sp: 6, align: 'center', alpha: ramp(t, 0, .2) });
+    c.save(); c.globalCompositeOperation = 'source-over';
+    for (let k = 0; k < 16; k++) { const a = k / 16 * 7 + t, r = 200 + t * 900 * (.5 + hash(k)); glowDot(CX + Math.cos(a) * r * .6, CY + Math.sin(a) * r * .4, 380 + t * 500, 'rgba(0,0,0,A)', .55 * ramp(t, .1, .5)); }
+    c.restore();
+    const b = 18 * eInCubic(ramp(t, .15, .62));
+    c.save(); c.filter = b > .4 ? `blur(${b.toFixed(1)}px)` : 'none';
+    chars('안개와 어둠이', CX, 560, { font: F(700, 140), t, start: 0, stagger: .04, dur: .35, dy: 30, color: '#ddd' }); c.restore();
+    chars('주의 손이 너를 치시매', CX, 380, { font: F(400, 38, 'K'), t, start: .05, stagger: .02, dur: .3, sp: 8, color: GOLD });
+    label('마술사 엘루마  —  행 13:11', CX, 680, { size: 22, sp: 4, align: 'center', alpha: ramp(t, .2, .4) * (1 - ramp(t, .5, .65)) });
+    return;
+  }
+  const lt = t - .66, g = lt < .24 ? 1 - lt / .24 : 0, fr = Math.floor(lt * 60);
+  const nm = lt < .24 ? (fr % 3 === 0 ? '사울' : fr % 3 === 1 ? '바울' : '사울') : '바울';
+  glowDot(CX, 520, 700, 'rgba(255,200,120,A)', .12 * ramp(lt, .2, .5));
+  glitch(() => {
+    const cc = ctxRef.c, s = lt < .24 ? 1 : lerp(1.12, 1, eOutExpo(ramp(lt, .24, .6)));
+    cc.save(); cc.translate(CX, 600); cc.scale(s, s); cc.font = F(900, 330); cc.textAlign = 'center';
+    cc.fillStyle = lt < .24 ? '#fff' : GOLD2; if (lt >= .24) { cc.shadowColor = 'rgba(255,200,120,.6)'; cc.shadowBlur = 50; }
+    cc.fillText(nm, 0, 0); cc.restore();
+  }, g, fr);
+  label('S A V L V S   →   P A V L V S', CX, 260, { size: 22, sp: 6, align: 'center', color: GOLD, alpha: ramp(lt, .05, .2), fam: 'S', w: 500 });
+  chars('사울이라고도 하는 바울이 성령이 충만하여', CX, 760, { font: F(300, 40, 'K'), t: lt, start: .3, stagger: .012, dur: .3, dy: 16, sp: 3, color: '#fff' });
+  label('사도행전 13 : 9', CX, 825, { size: 22, sp: 8, align: 'center', alpha: ramp(lt, .45, .7) });
+}
+function sceneClimb(t) {
+  const T = t + 4.6, c = ctxRef.c;
+  const S = drawMap(T, camAt(T, [[4.6, 32.0, 35.3, 1.0], [5.05, 31.1, 36.6, .95], [5.6, 31.3, 37.55, 1.15]]));
+  // John Mark departs
+  const mp = ramp(T, 5.05, 5.6); if (mp > 0) {
+    const [px, py] = proj(30.85, 36.96), [jx, jy] = proj(35.2, 31.8), e = eInCubic(mp);
+    const [x0, y0] = S(px, py), [x1, y1] = S(lerp(px, jx, e), lerp(py, jy, e));
+    c.save(); c.setLineDash([4, 8]); c.strokeStyle = 'rgba(130,180,255,.7)'; c.lineWidth = 2; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); c.restore();
+    c.save(); c.globalCompositeOperation = 'lighter'; glowDot(x1, y1, 40, 'rgba(130,180,255,A)', .8 * (1 - mp * .5)); c.restore();
+    label('마가 요한  →  예루살렘', x1 + 26, y1 + 6, { size: 18, sp: 3, color: '#a9c8ff', alpha: ramp(T, 5.1, 5.25) * (1 - ramp(T, 5.45, 5.6)), w: 600 });
+    label('행 13:13', x1 + 26, y1 + 30, { size: 14, sp: 3, alpha: ramp(T, 5.15, 5.3) * (1 - ramp(T, 5.45, 5.6)) });
+  }
+  // elevation panel
+  const pa = ramp(T, 4.95, 5.15); if (pa > 0) {
+    const x = 1260, y = 650, w = 560, h = 270; c.save(); c.globalAlpha = pa;
+    c.fillStyle = 'rgba(4,10,16,.78)'; c.fillRect(x, y, w, h); c.fillStyle = GOLD; c.fillRect(x, y, w * eOutExpo(pa), 2);
+    label('ELEVATION PROFILE  ·  타우루스 산맥 횡단', x + 24, y + 36, { size: 13, sp: 4, color: GOLD, w: 600 });
+    const gx = x + 60, gy = y + h - 50, gw = w - 90, gh = 150;
+    c.strokeStyle = 'rgba(255,255,255,.12)'; c.lineWidth = 1;
+    for (let k = 0; k <= 3; k++) { const yy = gy - k / 3 * gh; c.beginPath(); c.moveTo(gx, yy); c.lineTo(gx + gw, yy); c.stroke(); label(`${k * 500}m`, gx - 10, yy + 4, { size: 11, sp: 1, align: 'right', alpha: .8 }); }
+    const prof = s => { const base = s < .18 ? 30 + s * 300 : s < .55 ? 84 + (s - .18) / .37 * 1350 + Math.sin(s * 40) * 70 : 1300 - (s - .55) * 450 + Math.sin(s * 30) * 40; return clamp(base, 0, 1500); };
+    const pr = legP(LEGS[4], T); c.beginPath(); c.moveTo(gx, gy);
+    for (let k = 0; k <= 100 * pr; k++) { const s = k / 100; c.lineTo(gx + s * gw, gy - prof(s) / 1500 * gh); }
+    c.lineTo(gx + pr * gw, gy); c.closePath(); const fg = c.createLinearGradient(0, gy - gh, 0, gy); fg.addColorStop(0, 'rgba(232,195,126,.45)'); fg.addColorStop(1, 'rgba(232,195,126,0)'); c.fillStyle = fg; c.fill();
+    c.beginPath(); for (let k = 0; k <= 100 * pr; k++) { const s = k / 100; const yy = gy - prof(s) / 1500 * gh; k ? c.lineTo(gx + s * gw, yy) : c.moveTo(gx, yy); } c.strokeStyle = GOLD2; c.lineWidth = 2.5; c.stroke();
+    const hy = gy - prof(pr) / 1500 * gh; glowDot(gx + pr * gw, hy, 14, 'rgba(255,255,255,A)', 1);
+    label(`${Math.round(prof(pr)).toLocaleString()} m`, gx + pr * gw + 12, hy - 10, { size: 16, sp: 1, color: '#fff', w: 700 });
+    label('버가', gx, gy + 28, { size: 14, sp: 2 }); label('비시디아 안디옥', gx + gw, gy + 28, { size: 14, sp: 2, align: 'right', alpha: ramp(T, 5.4, 5.5) });
+    c.restore();
+  }
+  chapter(T, 4.65, '02', '버가를 지나 비시디아 안디옥으로', '행 13:13–14');
+}
+function sceneLight(t) {
+  const c = ctxRef.c; bg('#0b0f1c', '#010204');
+  const gx = 1320, gy = 560, Rg = 380, yaw = -1.25 + t * .45, tilt = .42;
+  const toV = (la, lo) => { const a = la * Math.PI / 180, b = lo * Math.PI / 180; return [Math.cos(a) * Math.sin(b), Math.sin(a), Math.cos(a) * Math.cos(b)]; };
+  const rot = ([x, y, z]) => { const cy = Math.cos(yaw), sy = Math.sin(yaw); let X = x * cy + z * sy, Z = -x * sy + z * cy; const ct = Math.cos(tilt), st = Math.sin(tilt); const Y = y * ct - Z * st; Z = y * st + Z * ct; return [X, Y, Z]; };
+  const src = toV(38.3, 31.2), spread = eOutCubic(ramp(t, .15, 1.3)) * Math.PI * 1.05;
+  glowDot(gx, gy, Rg * 1.5, 'rgba(90,130,255,A)', .16);
+  c.strokeStyle = 'rgba(160,190,255,.25)'; c.lineWidth = 1.2; c.beginPath(); c.arc(gx, gy, Rg, 0, 7); c.stroke();
+  c.save(); c.globalCompositeOperation = 'lighter';
+  for (const v of fib) {
+    const [X, Y, Z] = rot(v); if (Z < -.05) continue;
+    const ang = Math.acos(clamp(v[0] * src[0] + v[1] * src[1] + v[2] * src[2], -1, 1));
+    const lit = ang < spread, front = Math.abs(ang - spread) < .12;
+    const x = gx + X * Rg, y = gy - Y * Rg, sz = (lit ? 3.2 : 2) * (.5 + Z * .6);
+    c.fillStyle = front ? `rgba(255,255,255,${.9 * Z + .1})` : lit ? `rgba(255,214,140,${.85 * Z + .15})` : `rgba(130,150,220,${.35 * Z + .05})`;
+    c.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+  }
+  const [sx, sy, sz] = rot(src); if (sz > 0) { glowDot(gx + sx * Rg, gy - sy * Rg, 120, 'rgba(255,230,170,A)', .9 * ramp(t, 0, .2)); glowDot(gx + sx * Rg, gy - sy * Rg, 14, 'rgba(255,255,255,A)', 1); }
+  c.restore();
+  label('땅 끝 까 지', gx, gy + Rg + 60, { size: 16, sp: 10, align: 'center', color: GOLD, alpha: ramp(t, .9, 1.1) });
+  const X = 160;
+  chars('우리가 이방인에게로 향하노라', X, 300, { font: F(400, 30, 'K'), t, start: .05, stagger: .015, dur: .3, dy: -10, sp: 4, align: 'left', color: 'rgba(255,255,255,.6)' });
+  masked('내가 너를', X, 420, 70, { font: F(300, 70), t, start: .15, align: 'left', color: '#efe3cf' });
+  sweep(() => masked('이방의 빛으로', X, 560, 128, { font: F(900, 128), t, start: .25, stagger: .04, align: 'left', color: '#fff' }), ramp(t, .75, 1.25));
+  masked('땅 끝까지 구원하게 하리라', X, 660, 50, { font: F(500, 50, 'K'), t, start: .45, stagger: .02, align: 'left', color: GOLD });
+  c.fillStyle = GOLD; c.fillRect(X, 705, 300 * eOutExpo(ramp(t, .6, 1)), 2);
+  label('사도행전 13 : 47', X, 750, { size: 22, sp: 8, alpha: ramp(t, .7, 1) });
+}
+function sceneSplit(t) {
+  const T = t + 7.0, c = ctxRef.c, sp = eOutExpo(ramp(t, .55, .9)) * 150;
+  into(layer, () => { drawMap(T, camAt(T, [[7.0, 31.6, 38.05, 1.25], [8.0, 32.4, 37.75, 1.55]])); chapter(T, 7.05, '03', '이고니온, 그리고 루스드라', '행 14:1–6'); });
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  const nx = Math.cos(-.35 + Math.PI / 2), ny = Math.sin(-.35 + Math.PI / 2);
+  for (const sgn of [-1, 1]) {
+    c.save(); c.translate(nx * sp * sgn, ny * sp * sgn); c.beginPath();
+    const ax = CX - Math.cos(-.35) * 2000, ay = CY - Math.sin(-.35) * 2000, bx = CX + Math.cos(-.35) * 2000, by = CY + Math.sin(-.35) * 2000;
+    c.moveTo(ax, ay); c.lineTo(bx, by); c.lineTo(bx + nx * 3000 * sgn, by + ny * 3000 * sgn); c.lineTo(ax + nx * 3000 * sgn, ay + ny * 3000 * sgn); c.closePath(); c.clip();
+    c.drawImage(layer, 0, 0); c.restore();
+  }
+  if (sp > 1) {
+    c.save(); c.translate(CX, CY); c.rotate(-.35); c.globalCompositeOperation = 'lighter';
+    const g = c.createLinearGradient(0, -sp, 0, sp); g.addColorStop(0, 'rgba(180,35,44,0)'); g.addColorStop(.5, 'rgba(255,120,80,.55)'); g.addColorStop(1, 'rgba(180,35,44,0)');
+    c.fillStyle = g; c.fillRect(-2200, -sp, 4400, sp * 2); c.restore();
+    chars('무리가 나뉘어', CX, CY + 40, { font: F(900, 120), t, start: .58, stagger: .05, dur: .4, scale: 1.4, blur: 14, color: '#fff' });
+    label('유대인을 따르는 자', CX - 420, CY - 210, { size: 28, sp: 6, align: 'center', color: '#fff', alpha: ramp(t, .7, .85), w: 600 });
+    label('사도를 따르는 자', CX + 420, CY + 270, { size: 28, sp: 6, align: 'center', color: GOLD, alpha: ramp(t, .72, .87), w: 600 });
+    label('행 14:4', CX, CY + 110, { size: 20, sp: 6, align: 'center', alpha: ramp(t, .75, .9) });
+  }
+}
+function sceneLystra(t) {
+  const c = ctxRef.c; bg('#14100c', '#030201');
+  const st = eOutBack(ramp(t, .4, .58), 2.2);
+  if (t < .68) {
+    c.save(); c.translate(CX, 640); c.rotate(-Math.PI / 2 * st);
+    c.globalCompositeOperation = 'lighter'; c.strokeStyle = st > .5 ? GOLD2 : 'rgba(255,255,255,.6)'; c.lineWidth = 10; c.lineCap = 'round';
+    c.shadowColor = GOLD; c.shadowBlur = 30 * st; c.beginPath(); c.moveTo(0, 0); c.lineTo(220, 0); c.stroke(); c.restore();
+    if (st > 0) glowDot(CX, 640, 400, 'rgba(255,210,140,A)', .25 * st);
+  }
+  if (t < .4) {
+    chars('나면서 걷지 못하게 된 자', CX, 420, { font: F(300, 46, 'K'), t, start: 0, stagger: .02, dur: .3, dy: 16, sp: 6, color: 'rgba(255,255,255,.8)' });
+    label('루 스 드 라', CX, 180, { size: 20, sp: 10, align: 'center', color: GOLD, alpha: ramp(t, 0, .2) });
+  } else if (t < .68) {
+    const e = eOutExpo(ramp(t, .4, .55));
+    c.save(); c.translate(CX, 330); c.scale(lerp(1.6, 1, e), lerp(1.6, 1, e)); c.font = F(400, 150, 'B'); c.textAlign = 'center'; c.fillStyle = '#fff'; c.fillText('일어서라', 0, 0); c.restore();
+    label('네 발로 바로 일어서라  —  행 14:10', CX, 420, { size: 24, sp: 4, align: 'center', color: GOLD, alpha: ramp(t, .45, .55) });
+  } else if (t < .95) {
+    const lt = t - .68;
+    c.save(); c.font = F(900, 300); c.lineWidth = 2; c.textAlign = 'center';
+    c.strokeStyle = 'rgba(246,223,174,.75)'; c.strokeText('ΖΕΥΣ', 520 + lt * 300, 470);
+    c.strokeStyle = 'rgba(255,255,255,.5)'; c.strokeText('ΕΡΜΗΣ', 1400 - lt * 300, 850); c.restore();
+    chars('신들이 사람의 형상으로 내려오셨다', CX, 640, { font: F(700, 60), t: lt, start: 0, stagger: .012, dur: .2, scale: 1.3, color: '#fff' });
+    label('바나바는 제우스, 바울은 헤르메스  —  행 14:11–12', CX, 710, { size: 22, sp: 3, align: 'center', alpha: ramp(lt, .05, .15) });
+  }
+  // stones
+  let red = 0;
+  for (const s of stones) {
+    const fly = ramp(t, s.t - .13, s.t);
+    if (t >= s.t) {
+      red += .16; const a = ramp(t, s.t, s.t + .08);
+      c.save(); c.translate(s.ix, s.iy); c.strokeStyle = 'rgba(255,240,230,.85)'; c.lineWidth = 2.2;
+      for (const cr of s.cracks) { c.beginPath(); cr.forEach(([x, y], i) => i ? c.lineTo(x * a * 2.2, y * a * 2.2) : c.moveTo(0, 0)); c.stroke(); } c.restore();
+    } else if (fly > 0) {
+      const e = eInCubic(fly), x = lerp(s.sx, s.ix, e), y = lerp(s.sy, s.iy, e), sc = lerp(.4, 1.6, e);
+      c.save(); c.translate(x, y); c.rotate(s.rot + e * 4); c.scale(sc, sc); c.fillStyle = '#4a4038'; c.beginPath();
+      s.pts.forEach((r, j) => { const a = j / s.pts.length * Math.PI * 2; j ? c.lineTo(Math.cos(a) * r, Math.sin(a) * r) : c.moveTo(Math.cos(a) * r, Math.sin(a) * r); }); c.closePath(); c.fill();
+      c.strokeStyle = '#857565'; c.lineWidth = 3; c.stroke(); c.restore();
+    }
+  }
+  if (t >= .95) {
+    c.fillStyle = `rgba(150,10,20,${Math.min(.55, red)})`; c.fillRect(0, 0, W, H);
+    const e = eOutExpo(ramp(t, .95, 1.1));
+    c.save(); c.translate(CX, 600); c.scale(lerp(1.5, 1, e), lerp(1.5, 1, e)); c.font = F(900, 190); c.textAlign = 'center'; c.fillStyle = '#fff'; c.fillText('돌로 쳐서', 0, 0); c.restore();
+    label('죽은 줄로 알고 시외로 끌어 내치니라  —  행 14:19', CX, 700, { size: 24, sp: 3, align: 'center', color: '#fff', alpha: ramp(t, 1.05, 1.2) });
+    c.fillStyle = `rgba(0,0,0,${eInCubic(ramp(t, 1.3, 1.6))})`; c.fillRect(0, 0, W, H);
+  }
+}
+function sceneRise(t) {
+  const c = ctxRef.c; c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  const a = ramp(t, .05, .35), up = eInOut(ramp(t, .3, .8));
+  for (let k = 0; k < 10; k++) { const an = k / 10 * Math.PI * 2 + .3; glowDot(CX + Math.cos(an) * 260, 600 + Math.sin(an) * 80, 22, 'rgba(200,190,255,A)', .5 * a); glowDot(CX + Math.cos(an) * 260, 600 + Math.sin(an) * 80, 4, 'rgba(255,255,255,A)', .8 * a); }
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const bh = 900 * up, g = c.createLinearGradient(CX - 90, 0, CX + 90, 0); g.addColorStop(0, 'rgba(255,200,120,0)'); g.addColorStop(.5, `rgba(255,236,200,${.6 * up})`); g.addColorStop(1, 'rgba(255,200,120,0)');
+  c.fillStyle = g; c.fillRect(CX - 90, 600 - bh, 180, bh);
+  glowDot(CX, 600 - 160 * up, 160, 'rgba(255,220,160,A)', .3 + .6 * up); glowDot(CX, 600 - 160 * up, 12, 'rgba(255,255,255,A)', .4 + .6 * a); c.restore();
+  chars('그가 일어나', CX, 860, { font: F(900, 120), t, start: .35, stagger: .06, dur: .5, dy: 50, blur: 16, color: '#fff' });
+  label('제자들이 둘러섰을 때에 그가 일어나 성에 들어갔다가  —  행 14:20', CX, 940, { size: 22, sp: 3, align: 'center', alpha: ramp(t, .55, .8), color: 'rgba(255,255,255,.7)' });
+}
+function sceneReturn(t) {
+  const T = t + 10.6;
+  drawMap(T, camAt(T, [[10.6, 33.2, 37.45, 1.4], [11.2, 32.7, 37.1, .78], [12.0, 33.3, 36.55, .56]]), { church: 11.0 });
+  chapter(T, 10.65, '04', '돌아오며 제자들의 마음을 굳게 하여', '행 14:21–26', 1 - ramp(T, 11.2, 11.4));
+  label('각 교회에서 장로들을 택하여  —  행 14:23', W - 80, 190, { size: 20, sp: 3, align: 'right', color: GOLD2, alpha: ramp(T, 11.05, 11.3) });
+}
+function sceneDoor(t) {
+  const c = ctxRef.c; bg('#100b06', '#000');
+  const dx = CX, dy = 560, dw = 560, dh = 800, open = eInOut(ramp(t, .1, .85)), push = eInExpo(ramp(t, .75, 1.12));
+  if (t < 1.12) {
+    c.save(); zoomAround(dx, dy, 1 + push * 6);
+    // light inside
+    const li = .25 + .75 * open; const lg = c.createRadialGradient(dx, dy, 0, dx, dy, dh * .7);
+    lg.addColorStop(0, `rgba(255,252,240,${li})`); lg.addColorStop(.5, `rgba(255,220,160,${li * .9})`); lg.addColorStop(1, `rgba(255,170,90,${li * .7})`);
+    c.fillStyle = lg; c.fillRect(dx - dw / 2, dy - dh / 2, dw, dh);
+    c.save(); c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 22; i++) { const a = i / 22 * Math.PI * 2 + t * .3, w = .05; const g = c.createRadialGradient(dx, dy, 0, dx, dy, 1400 * open);
+      g.addColorStop(0, `rgba(255,220,160,${.35 * open})`); g.addColorStop(1, 'rgba(255,200,120,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(dx, dy); c.arc(dx, dy, 1400 * open, a - w, a + w); c.fill(); }
+    for (const m of motes) { const z = ((m.z0 + t * m.s * 1.2) % 1); const r = z * z * 1100; const x = dx + Math.cos(m.a) * r, y = dy + Math.sin(m.a) * r * .8; glowDot(x, y, 2 + z * 10, 'rgba(255,230,180,A)', open * (1 - z) * .9); }
+    c.restore();
+    // panels
+    for (const sg of [-1, 1]) {
+      const hx = dx + sg * dw / 2, w = dw / 2 * Math.cos(open * 1.35), ix = hx - sg * w, grow = 1 + .35 * Math.sin(open * 1.35);
+      const pg = c.createLinearGradient(hx, 0, ix, 0); pg.addColorStop(0, '#1e140b'); pg.addColorStop(1, '#3a2814');
+      c.fillStyle = pg; c.beginPath(); c.moveTo(hx, dy - dh / 2); c.lineTo(ix, dy - dh / 2 * grow); c.lineTo(ix, dy + dh / 2 * grow); c.lineTo(hx, dy + dh / 2); c.closePath(); c.fill();
+      c.strokeStyle = 'rgba(232,195,126,.8)'; c.lineWidth = 2; c.stroke();
+      for (const [a0, a1] of [[.1, .45], [.55, .9]]) { const yy = f => lerp(dy - dh / 2, dy + dh / 2, f), yi = f => lerp(dy - dh / 2 * grow, dy + dh / 2 * grow, f);
+        const x0 = lerp(hx, ix, .2), x1 = lerp(hx, ix, .8), m0 = .2, m1 = .8;
+        c.strokeStyle = 'rgba(232,195,126,.35)'; c.beginPath(); c.moveTo(x0, lerp(yy(a0), yi(a0), m0)); c.lineTo(x1, lerp(yy(a0), yi(a0), m1)); c.lineTo(x1, lerp(yy(a1), yi(a1), m1)); c.lineTo(x0, lerp(yy(a1), yi(a1), m0)); c.closePath(); c.stroke(); }
+    }
+    c.strokeStyle = GOLD; c.lineWidth = 6; c.strokeRect(dx - dw / 2 - 10, dy - dh / 2 - 10, dw + 20, dh + 20);
+    c.restore();
+    chars('믿음의 문', CX, 120, { font: F(400, 34, 'K'), t, start: .05, stagger: .05, dur: .3, sp: 14, color: GOLD, alpha: 1 - push });
+    c.fillStyle = `rgba(255,240,215,${push})`; c.fillRect(0, 0, W, H);
+    return;
+  }
+  const lt = t - 1.12;
+  bg('#1b1209', '#030201');
+  c.save(); c.globalCompositeOperation = 'lighter'; for (const m of dust) glowDot(m.x + Math.sin(t + m.ph) * 20, (m.y - m.v * t * 3 + H) % H, m.r * 3, 'rgba(255,210,150,A)', m.a * .4); c.restore();
+  c.fillStyle = `rgba(255,240,215,${1 - eOutCubic(ramp(lt, 0, .35))})`; c.fillRect(0, 0, W, H);
+  // route glyph
+  const all = LEGS.flatMap(L => L.P), xs = all.map(p => p[0]), ys = all.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), sc = 380 / (x1 - x0), ox = CX - 190, oy = 340 - (y1 - y0) * sc / 2;
+  const gp = eInOut(ramp(lt, .05, .9)), totalLen = LEGS.reduce((a, L) => a + L.len, 0); let budget = gp * totalLen;
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  for (const L of LEGS) {
+    if (budget <= 0) break; const d = Math.min(budget, L.len); budget -= L.len;
+    c.beginPath(); c.moveTo(ox + (L.P[0][0] - x0) * sc, oy + (L.P[0][1] - y0) * sc);
+    for (let i = 1; i < L.P.length && L.cum[i - 1] < d; i++) c.lineTo(ox + (L.P[i][0] - x0) * sc, oy + (L.P[i][1] - y0) * sc);
+    c.setLineDash(L.type === 'sea' ? [5, 5] : []); c.strokeStyle = L.type === 'ret' ? 'rgba(243,235,221,.7)' : GOLD; c.lineWidth = 2.4; c.stroke(); c.setLineDash([]);
+  }
+  CITIES.forEach((C, i) => { const a = eOutBack(ramp(lt, .1 + i * .07, .3 + i * .07)); if (a > 0) { c.fillStyle = '#fff'; c.beginPath(); c.arc(ox + (C.xy[0] - x0) * sc, oy + (C.xy[1] - y0) * sc, 4 * a, 0, 7); c.fill(); } });
+  chars('믿음의 문을 이방인들에게 열어 주셨음을', CX, 560, { font: F(400, 42), t: lt, start: .2, stagger: .025, dur: .45, dy: 14, blur: 8, sp: 6, color: GOLD });
+  sweep(() => masked('바울의 1차 전도 여행', CX, 720, 140, { font: F(900, 140), t: lt, start: .3, stagger: .045, dur: .65, color: '#fff' }), ramp(lt, .85, 1.45), .35, 300);
+  const ln = eOutExpo(ramp(lt, .7, 1.1)); c.fillStyle = GOLD; c.fillRect(CX - 300 * ln, 775, 600 * ln, 2);
+  label('사도행전 13 – 14장  ·  AD 46 – 48  ·  약 2,100 km', CX, 832, { size: 28, sp: 6, align: 'center', color: '#efe3cf', w: 300, alpha: ramp(lt, .85, 1.1) });
+  label("PAUL'S FIRST MISSIONARY JOURNEY", CX, 878, { size: 17, sp: 14, align: 'center', color: 'rgba(255,255,255,.45)', w: 500, alpha: ramp(lt, 1.0, 1.25) });
+  c.fillStyle = `rgba(0,0,0,${eInCubic(ramp(t, 2.5, 3.0))})`; c.fillRect(0, 0, W, H);
+}
+const dust = Array.from({ length: 90 }, () => ({ x: R() * W, y: R() * H, r: 1 + R() * 4, v: 8 + R() * 25, ph: R() * 6, a: .1 + R() * .5 }));
+const SCENES = [
+  [0, 1.5, sceneCall, '부르심'], [1.5, 3.2, sceneSail, '구브로'], [3.2, 4.6, sceneName, '사울 → 바울'], [4.6, 5.6, sceneClimb, '버가 · 비시디아'], [5.6, 7.0, sceneLight, '이방의 빛'],
+  [7.0, 8.0, sceneSplit, '이고니온'], [8.0, 9.6, sceneLystra, '루스드라'], [9.6, 10.6, sceneRise, '다시 일어나'], [10.6, 12.0, sceneReturn, '귀환'], [12.0, 15.0, sceneDoor, '믿음의 문']
+];
+
+// ---------- post ----------
+const grain = [];
+for (let k = 0; k < 4; k++) {
+  const g = document.createElement('canvas'); g.width = g.height = 512; const gc = g.getContext('2d'); const id = gc.createImageData(512, 512); const r = rng(100 + k);
+  for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; }
+  gc.putImageData(id, 0, 0); grain.push(gc.createPattern(g, 'repeat'));
+}
+function chroma(d) {
+  d = Math.round(d); if (d < 1) return;
+  const im = ctx0.getImageData(0, 0, W, H), s = im.data, o = new Uint8ClampedArray(s);
+  for (let y = 0; y < H; y++) { const row = y * W * 4; for (let x = 0; x < W; x++) { const i = row + x * 4; s[i] = o[row + Math.min(W - 1, x + d) * 4]; s[i + 2] = o[row + Math.max(0, x - d) * 4 + 2]; } }
+  ctx0.putImageData(im, 0, 0);
+}
+function hud(t, idx) {
+  const c = ctx0, bar = 62 * eOutExpo(ramp(t, 0, .6));
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, bar); c.fillRect(0, H - bar, W, bar);
+  const a = ramp(t, .3, .8) * (1 - ramp(t, 14.2, 14.8));
+  label('바울의 1차 전도 여행  —  MOTION REEL', 60, 40, { size: 15, sp: 5, alpha: a * .7, w: 500 });
+  label(`${String(idx + 1).padStart(2, '0')} / 10   ${SCENES[idx][3]}`, W - 60, 40, { size: 15, sp: 4, align: 'right', color: GOLD, alpha: a, w: 600 });
+  const f = Math.floor(t * 60), tc = `00:${String(Math.floor(t)).padStart(2, '0')}:${String(f % 60).padStart(2, '0')}`;
+  label(tc, 60, H - 24, { size: 15, sp: 4, alpha: a * .6, w: 400 });
+  label('ACTS 13 — 14', W - 60, H - 24, { size: 15, sp: 6, align: 'right', alpha: a * .6, w: 400 });
+  c.fillStyle = `rgba(232,195,126,${a * .9})`; c.fillRect(300, H - 31, (W - 600) * t / 15, 2);
+  c.fillStyle = `rgba(255,255,255,${a * .12})`; c.fillRect(300, H - 31, W - 600, 2);
+}
+window.render = function (t) {
+  ctxRef.c = ctx0; const c = ctx0;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none';
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  let idx = SCENES.findIndex(s => t >= s[0] && t < s[1]); if (idx < 0) idx = SCENES.length - 1; const S = SCENES[idx];
+  const sh = env(t, 9, 20);
+  c.save(); c.translate(noise1(t * 31) * sh, noise1(t * 29 + 9) * sh); S[2](t - S[0]); c.restore();
+  chroma(env(t, 10, 9));
+  const vg = c.createRadialGradient(CX, CY, 300, CX, CY, 1150); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)'); c.fillStyle = vg; c.fillRect(0, 0, W, H);
+  c.save(); c.globalCompositeOperation = 'overlay'; c.globalAlpha = .09; c.fillStyle = grain[Math.floor(t * 60) % 4];
+  c.translate((hash(t * 60) * 512) | 0, (hash(t * 60 + 3) * 512) | 0); c.fillRect(-512, -512, W + 1024, H + 1024); c.restore();
+  const fl = Math.min(.85, env(t, 13, .7)); c.fillStyle = `rgba(255,246,228,${fl})`; c.fillRect(0, 0, W, H);
+  hud(t, idx);
+};
+window.ready = (async () => {
+  for (const [n, f] of [['S', 'serif.ttf'], ['K', 'sans.ttf'], ['B', 'black.ttf']]) { const ff = new FontFace(n, `url(${f})`, { weight: n === 'B' ? '400' : '100 900' }); await ff.load(); document.fonts.add(ff); }
+  buildMap(); window.render(0); return TOTALKM;
+})();
+</script></body></html>
