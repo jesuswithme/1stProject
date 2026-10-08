@@ -13,7 +13,7 @@ if (mode === 'stills') {
 } else {
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', '60', '-c:v', 'mjpeg', '-i', '-', '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', process.env.OUT||'video.mp4'], { stdio: ['pipe', 'inherit', 'inherit'] });
   const t0 = Date.now();
-  for (let f = 0; f < 900; f++) { const b = await grab(f / 60); if (!ff.stdin.write(b)) await new Promise(r => ff.stdin.once('drain', r)); if (f % 100 === 0) console.log('frame', f, ((Date.now() - t0) / 1000).toFixed(1) + 's'); }
+  const NF = +(process.env.FRAMES||900); for (let f = 0; f < NF; f++) { const b = await grab(f / 60); if (!ff.stdin.write(b)) await new Promise(r => ff.stdin.once('drain', r)); if (f % 100 === 0) console.log('frame', f, ((Date.now() - t0) / 1000).toFixed(1) + 's'); }
   ff.stdin.end(); await new Promise(r => ff.on('close', r));
 }
 await browser.close();
