@@ -1,0 +1,567 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// 나레이션 구간(초) — 무음 검출로 측정
+// 0.15–3.09  오징어무침에 들어가는 오징어는 왜(2.15) 칼집을(2.38) 낼까요?
+// 3.66–4.72  양념이 골고루 묻고,
+// 4.89–7.87  데칠 때 / 열이 잘 전달돼(5.50) / 고르게 익어요(7.06)
+// 8.27–10.55 칼집이 벌어지면서 모양도 예뻐지고(10.19)
+// 10.75–13.14 양념을 머금어 / 한입마다 맛이 살아나죠
+// 13.44–16.09 오징어에 낸 칼집에는 / 다 이유가(14.37) 있었던 거예요
+const W = 1920, H = 1080, DUR = 16.352;
+const ctx = document.getElementById('c').getContext('2d');
+const TAU = Math.PI * 2;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const ein = x => x * x * x;
+const back = x => { const c1 = 1.8, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const env = (t, a, b, fi = .3, fo = .3) => Math.min(prog(t, a, a + fi), 1 - prog(t, b - fo, b));
+function hexLerp(c1, c2, k) {
+  const p = c => c[0] === '#' ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : c.match(/\d+/g).map(Number);
+  const a = p(c1), b = p(c2);
+  return `rgb(${a.map((v, i) => Math.round(lerp(v, b[i], k))).join(',')})`;
+}
+const C = {
+  raw: '#d8c9c0', flesh: '#f6e7da', cooked: '#fff8f0', pink: '#e7a596', skin: '#f1cdbd',
+  groove: '#b98172', sauce: '#d8372a', sauceHi: '#ff6a4d', heat: '#ff8a3d', blue: '#4a90d9',
+  green: '#5fc46b', white: '#fdf6ec', steel: '#d7dde6', handle: '#7b4f33'
+};
+
+function circle(x, y, r, fill, stroke, lw) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+function rrect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function glow(x, y, r, color, a) {
+  if (a <= 0) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save(); ctx.globalAlpha *= a; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+function drop(x, y, s, color) {
+  ctx.beginPath(); ctx.moveTo(x, y - s * 1.6);
+  ctx.bezierCurveTo(x + s * 0.2, y - s, x + s, y - s * 0.3, x + s, y + s * 0.15);
+  ctx.arc(x, y + s * 0.15, s, 0, Math.PI);
+  ctx.bezierCurveTo(x - s, y - s * 0.3, x - s * 0.2, y - s, x, y - s * 1.6);
+  ctx.fillStyle = color; ctx.fill();
+  circle(x - s * 0.35, y, s * 0.22, 'rgba(255,255,255,.55)');
+}
+function check(x, y, s, k, color) {
+  if (k <= 0) return;
+  circle(x, y, s * 1.5 * back(clamp(k * 1.6)), color);
+  const p = [[x - s * 0.6, y], [x - s * 0.15, y + s * 0.45], [x + s * 0.65, y - s * 0.45]];
+  const kk = clamp(k * 1.4 - 0.3);
+  if (kk <= 0) return;
+  ctx.beginPath(); ctx.moveTo(...p[0]);
+  if (kk < 0.4) ctx.lineTo(lerp(p[0][0], p[1][0], kk / 0.4), lerp(p[0][1], p[1][1], kk / 0.4));
+  else { ctx.lineTo(...p[1]); const q = (kk - 0.4) / 0.6; ctx.lineTo(lerp(p[1][0], p[2][0], q), lerp(p[1][1], p[2][1], q)); }
+  ctx.lineWidth = s * 0.3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#fff'; ctx.stroke();
+}
+function burst(x, y, k, n, r0, r1, color, lw = 8) {
+  if (k <= 0 || k >= 1) return;
+  ctx.save(); ctx.globalAlpha *= 1 - k; ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  for (let j = 0; j < n; j++) {
+    const a = j / n * TAU + 0.3, r = lerp(r0, r1, eout(k));
+    ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); ctx.lineTo(x + Math.cos(a) * (r + 36), y + Math.sin(a) * (r + 36)); ctx.stroke();
+  }
+  ctx.restore();
+}
+function star(x, y, r, a) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.fillStyle = '#fff3c4'; ctx.beginPath();
+  for (let q = 0; q < 8; q++) { const rr = q % 2 ? r * 0.25 : r; const aa = q / 8 * TAU; ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function knife(x, y, ang, s = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s);
+  // 칼날: 끝(0,0)이 자르는 지점
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(40, -70); ctx.lineTo(300, -70); ctx.lineTo(300, 0); ctx.closePath();
+  ctx.fillStyle = C.steel; ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(60, -64, 230, 8);
+  ctx.fillStyle = '#9aa4b2'; ctx.fillRect(40, -6, 260, 6);
+  ctx.fillStyle = C.handle; rrect(300, -62, 190, 54, 18); ctx.fill();
+  circle(350, -35, 7, '#d9b48a'); circle(440, -35, 7, '#d9b48a');
+  ctx.restore();
+}
+function background(t) {
+  const g = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, 1150);
+  g.addColorStop(0, '#2a3343'); g.addColorStop(1, '#10141c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 36; i++) {
+    const x = ((i * 397.3) + t * (10 + (i % 5) * 6)) % W, y = ((i * 211.7) - t * (8 + (i % 7) * 4) + H * 10) % H;
+    ctx.globalAlpha = 0.07 + 0.05 * Math.sin(t * 1.5 + i);
+    circle(x, y, 2 + (i % 3) * 1.5, '#ffd8c8');
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- 칼집 낸 오징어 조각 (다이아몬드 셀) ----------
+// o: {score 0..1 칼집 진행, open 벌어짐, curl 말림, cook 익음, sauce 홈 양념, gloss 겉 양념}
+function scoredPiece(cx, cy, w, h, o, t) {
+  const d = o.d || 30; // 다이아몬드 반대각선
+  const cook = o.cook ?? 1, curl = o.curl || 0, open = o.open || 0;
+  const flesh = hexLerp(C.raw, C.cooked, cook);
+  const grooveCol = hexLerp(hexLerp('#a88e85', C.groove, cook), C.sauce, o.sauce || 0);
+  const cells = [];
+  for (let j = -Math.ceil(h / d) - 1; j <= Math.ceil(h / d) + 1; j++) {
+    for (let i = -Math.ceil(w / d) - 1; i <= Math.ceil(w / d) + 1; i++) {
+      const x = i * 2 * d + (j & 1) * d, y = j * d;
+      if (Math.abs(x) > w / 2 + d || Math.abs(y) > h / 2 + d) continue;
+      cells.push([x, y]);
+    }
+  }
+  ctx.save(); ctx.translate(cx, cy);
+  if (curl <= 0.001) {
+    // 평평한 조각
+    ctx.save(); rrect(-w / 2, -h / 2, w, h, 40); ctx.clip();
+    ctx.fillStyle = flesh; ctx.fillRect(-w / 2, -h / 2, w, h);
+    const sc = o.score ?? 1;
+    if (sc > 0) {
+      ctx.fillStyle = grooveCol;
+      const g = lerp(0.1, 0.32, open);
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      cells.forEach(([x, y]) => {
+        // 칼집은 왼쪽 위부터 순서대로 생김
+        const order = (x + y + w / 2 + h / 2) / (w + h);
+        const k = clamp((sc - order * 0.85) / 0.15);
+        const dd = d * lerp(1, 1 - g, k);
+        ctx.beginPath(); ctx.moveTo(x, y - dd); ctx.lineTo(x + dd, y); ctx.lineTo(x, y + dd); ctx.lineTo(x - dd, y); ctx.closePath();
+        ctx.fillStyle = flesh; ctx.fill();
+      });
+    }
+    // 광택
+    const sh = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+    sh.addColorStop(0, 'rgba(255,255,255,.28)'); sh.addColorStop(0.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.12)');
+    ctx.fillStyle = sh; ctx.fillRect(-w / 2, -h / 2, w, h);
+    if (o.gloss) { ctx.fillStyle = `rgba(216,55,42,${0.55 * o.gloss})`; ctx.fillRect(-w / 2, -h / 2, w, h); }
+    ctx.restore();
+  } else {
+    // 말린 조각 (원통 투영) — 솔방울 모양
+    const span = curl * Math.PI * 0.92;
+    const R = (w / 2) / span;
+    const g = lerp(0.1, 0.26, open);
+    const drawn = cells.filter(([x, y]) => Math.abs(x) <= w / 2 && Math.abs(y) <= h / 2 - d * 0.3).map(([x, y]) => {
+      const th = x / (w / 2) * span;
+      return { x, y, th, X: R * Math.sin(th), Z: Math.cos(th) };
+    }).sort((a, b) => a.Z - b.Z);
+    // 홈 색 바탕 (말린 몸통 실루엣)
+    const ext = (span >= Math.PI / 2 ? R : R * Math.sin(span)) + d * 0.6;
+    ctx.fillStyle = grooveCol; rrect(-ext, -h / 2 * (1 + open * 0.06) + d * 0.2, ext * 2, h * (1 + open * 0.06) - d * 0.4, Math.min(ext, 40)); ctx.fill();
+    drawn.forEach(c => {
+      const sx = Math.max(0.15, Math.abs(c.Z));
+      const pop = 1 + open * 0.18 * Math.max(0, c.Z); // 바깥쪽 셀이 튀어나옴
+      const dd = d * (1 - g) * pop;
+      const lit = c.Z > 0 ? lerp(0.75, 1, c.Z) : 0.55;
+      ctx.save(); ctx.translate(c.X * pop, c.y * (1 + open * 0.06)); ctx.scale(sx, 1);
+      ctx.beginPath(); ctx.moveTo(0, -dd); ctx.lineTo(dd, 0); ctx.lineTo(0, dd); ctx.lineTo(-dd, 0); ctx.closePath();
+      ctx.fillStyle = grooveCol; ctx.lineWidth = d * g * 0.5; ctx.strokeStyle = grooveCol; ctx.stroke();
+      ctx.fillStyle = hexLerp('#8a7068', flesh, lit);
+      ctx.fill();
+      if (o.gloss) { ctx.fillStyle = `rgba(216,55,42,${0.5 * o.gloss})`; ctx.fill(); }
+      if (c.Z > 0.6) { ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.moveTo(0, -dd); ctx.lineTo(dd * 0.5, -dd * 0.5); ctx.lineTo(0, -dd * 0.1); ctx.lineTo(-dd * 0.5, -dd * 0.5); ctx.fill(); }
+      ctx.restore();
+    });
+  }
+  ctx.restore();
+}
+function plainPiece(cx, cy, w, h, cookOuter, cookInner, gloss = 0) {
+  ctx.save(); ctx.translate(cx, cy);
+  rrect(-w / 2, -h / 2, w, h, 40); ctx.save(); ctx.clip();
+  const g = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(w, h) * 0.6);
+  g.addColorStop(0, hexLerp(C.raw, C.cooked, cookInner)); g.addColorStop(0.55, hexLerp(C.raw, C.cooked, lerp(cookInner, cookOuter, 0.6))); g.addColorStop(1, hexLerp(C.raw, C.cooked, cookOuter));
+  ctx.fillStyle = g; ctx.fillRect(-w / 2, -h / 2, w, h);
+  const sh = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+  sh.addColorStop(0, 'rgba(255,255,255,.35)'); sh.addColorStop(0.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.12)');
+  ctx.fillStyle = sh; ctx.fillRect(-w / 2, -h / 2, w, h);
+  if (gloss) { ctx.fillStyle = `rgba(216,55,42,${0.5 * gloss})`; ctx.fillRect(-w / 2, -h / 2, w, h); }
+  ctx.restore(); ctx.restore();
+}
+
+// ---------- S1: 오징어는 왜 칼집을 낼까요? ----------
+function mantlePath(cx, cy) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 330);
+  ctx.bezierCurveTo(cx + 70, cy - 300, cx + 130, cy - 120, cx + 125, cy + 60);
+  ctx.quadraticCurveTo(cx + 120, cy + 110, cx, cy + 115);
+  ctx.quadraticCurveTo(cx - 120, cy + 110, cx - 125, cy + 60);
+  ctx.bezierCurveTo(cx - 130, cy - 120, cx - 70, cy - 300, cx, cy - 330);
+  ctx.closePath();
+}
+function squidChar(cx, cy, t, scoreK) {
+  // 촉수
+  for (let i = 0; i < 8; i++) {
+    const bx = cx - 90 + i * 25.7, long = i === 2 || i === 5;
+    const len = long ? 300 : 210;
+    ctx.beginPath();
+    for (let s = 0; s <= 24; s++) {
+      const u = s / 24, y = cy + 150 + u * len;
+      const x = bx + (i - 3.5) * 14 * u + Math.sin(t * 4 + i * 0.9 + u * 5) * 18 * u;
+      s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.lineWidth = long ? 16 : 20; ctx.lineCap = 'round'; ctx.strokeStyle = C.skin; ctx.stroke();
+  }
+  // 머리
+  ctx.beginPath(); ctx.ellipse(cx, cy + 150, 105, 62, 0, 0, TAU); ctx.fillStyle = C.skin; ctx.fill();
+  for (const s of [-1, 1]) {
+    circle(cx + s * 52, cy + 145, 24, '#fff'); circle(cx + s * 52 + Math.sin(t * 2) * 4, cy + 148, 13, '#262a33'); circle(cx + s * 48, cy + 140, 5, '#fff');
+  }
+  // 지느러미
+  for (const s of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(cx + s * 40, cy - 300); ctx.quadraticCurveTo(cx + s * 190, cy - 270, cx + s * 95, cy - 150); ctx.closePath();
+    ctx.fillStyle = C.pink; ctx.fill();
+  }
+  // 몸통
+  mantlePath(cx, cy); ctx.fillStyle = C.skin; ctx.fill();
+  ctx.save(); mantlePath(cx, cy); ctx.clip();
+  for (let k = 0; k < 18; k++) circle(cx - 100 + ((k * 53) % 200), cy - 280 + ((k * 97) % 380), 7 + (k % 3) * 3, 'rgba(231,165,150,.55)');
+  // 칼집 (대각선 격자) — 칼이 지나가며 생김
+  if (scoreK > 0) {
+    ctx.strokeStyle = C.groove; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    const lines = [];
+    for (let i = -8; i <= 8; i++) lines.push([1, i]); for (let i = -8; i <= 8; i++) lines.push([-1, i]);
+    lines.forEach(([dir, i], n) => {
+      const k = clamp(scoreK * lines.length - n);
+      if (k <= 0) return;
+      const ox = cx + i * 46, L = 520;
+      ctx.beginPath(); ctx.moveTo(ox - dir * L / 2, cy - 110 - L / 2); ctx.lineTo(ox - dir * L / 2 + dir * L * k, cy - 110 - L / 2 + L * k); ctx.stroke();
+    });
+  }
+  const sh = ctx.createLinearGradient(cx - 130, 0, cx + 130, 0);
+  sh.addColorStop(0, 'rgba(255,255,255,.3)'); sh.addColorStop(0.4, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(0,0,0,.15)');
+  ctx.fillStyle = sh; ctx.fillRect(cx - 140, cy - 340, 280, 470);
+  ctx.restore();
+}
+function s1(t) {
+  const a = env(t, 0, 3.6, 0.25, 0.3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const enter = back(prog(t, 0.1, 0.7));
+  const bob = Math.sin(t * 2.4) * 14;
+  const cx = 960, cy = 520 + bob + (1 - enter) * 700;
+  const out = ein(prog(t, 3.2, 3.6));
+  ctx.translate(cx, cy); ctx.scale(1 - out * 0.4, 1 - out * 0.4); ctx.rotate(out * 0.4); ctx.translate(-cx, -cy);
+  glow(cx, cy, 520, 'rgba(255,190,170,.25)', enter);
+  // 칼집 미리보기 점선 (왜 칼집을?)
+  const score = eio(prog(t, 2.4, 3.05));
+  squidChar(cx, cy, t, score);
+  const prev = prog(t, 2.15, 2.35) * (1 - prog(t, 2.4, 2.6));
+  if (prev > 0) {
+    ctx.save(); mantlePath(cx, cy); ctx.clip(); ctx.globalAlpha *= prev;
+    ctx.setLineDash([14, 12]); ctx.lineDashOffset = -t * 60; ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+    for (let i = -4; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 92 - 260, cy - 370); ctx.lineTo(cx + i * 92 + 260, cy + 150); ctx.stroke(); }
+    ctx.restore();
+  }
+  // 칼: 1.8초 등장 → 2.4–3.05 칼집 → 퇴장
+  const kin = eout(prog(t, 1.75, 2.2));
+  if (kin > 0) {
+    const sweep = prog(t, 2.4, 3.05);
+    const zig = (sweep * 34) % 2; const zz = zig < 1 ? zig : 2 - zig;
+    const kx = lerp(1650, cx + 30, kin) + (sweep > 0 && sweep < 1 ? (zz - 0.5) * 200 : 0);
+    const ky = lerp(250, cy - 180, kin) + sweep * 220 + (sweep > 0 && sweep < 1 ? (zz - 0.5) * 200 : 0);
+    const tilt = -0.6 + Math.sin(prog(t, 2.0, 2.4) * Math.PI * 2) * 0.12;
+    const kout = ein(prog(t, 3.05, 3.35));
+    knife(kx + kout * 900, ky - kout * 300, tilt, 0.9);
+    // 칼날 반짝
+    const gl = prog(t, 2.05, 2.35);
+    if (gl > 0 && gl < 1) star(kx + 120 * gl, ky - 40, 34 * Math.sin(gl * Math.PI), 1);
+  }
+  // 궁금증 파동
+  for (let k = 0; k < 2; k++) {
+    const p = prog(t, 2.15 + k * 0.3, 2.95 + k * 0.3);
+    if (p > 0 && p < 1) { ctx.save(); ctx.globalAlpha *= (1 - p) * 0.6; ctx.beginPath(); ctx.ellipse(cx, cy - 60, 200 + p * 180, 300 + p * 180, 0, 0, TAU); ctx.lineWidth = 6; ctx.strokeStyle = '#ffd1c2'; ctx.stroke(); ctx.restore(); }
+  }
+  ctx.restore();
+}
+
+// ---------- S2: 양념이 골고루 묻고 ----------
+function s2(t) {
+  const a = env(t, 3.45, 4.95, 0.25, 0.25); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const pin = back(prog(t, 3.45, 3.8));
+  const L = { x: 560, y: 560 }, R = { x: 1360, y: 560 }, pw = 520, ph = 380;
+  // 왼쪽: 칼집 없음 — 양념이 흘러내림
+  ctx.save(); ctx.translate(L.x, L.y); ctx.scale(pin, pin); ctx.globalAlpha *= lerp(1, 0.6, prog(t, 4.5, 4.8));
+  plainPiece(0, 0, pw, ph, 1, 1);
+  ctx.restore();
+  // 오른쪽: 칼집 — 홈마다 양념이 스며듦
+  const soak = eio(prog(t, 3.95, 4.6));
+  ctx.save(); ctx.translate(R.x, R.y); ctx.scale(pin, pin);
+  scoredPiece(0, 0, pw, ph, { score: 1, open: 0.15, sauce: soak, cook: 1, d: 30 }, t);
+  ctx.restore();
+  // 양념 방울 낙하
+  for (const side of [L, R]) {
+    for (let j = 0; j < 5; j++) {
+      const st = 3.62 + j * 0.06, k = prog(t, st, st + 0.32);
+      if (k <= 0) continue;
+      const x = side.x - 180 + j * 90, landY = side.y - 60 + (j % 2) * 70;
+      if (k < 1) { drop(x, lerp(120, landY, ein(k)), 20, C.sauce); continue; }
+      if (side === L) {
+        // 매끈한 면: 미끄러져 아래로 흘러내림
+        const s = prog(t, st + 0.32, st + 0.9);
+        const y = lerp(landY, side.y + ph / 2 + 140, ein(s));
+        ctx.save(); ctx.globalAlpha *= 1 - prog(s, 0.7, 1);
+        ctx.beginPath(); ctx.ellipse(x, y, 20, 26 + s * 20, 0, 0, TAU); ctx.fillStyle = C.sauce; ctx.fill();
+        if (y < side.y + ph / 2) { ctx.fillStyle = 'rgba(216,55,42,.35)'; ctx.fillRect(x - 6, landY, 12, y - landY); }
+        ctx.restore();
+      } else {
+        // 칼집 면: 퍼지며 스며듦
+        const s = prog(t, st + 0.32, st + 0.7);
+        ctx.save(); ctx.globalAlpha *= 1 - s; ctx.beginPath(); ctx.ellipse(x, landY, 22 + s * 50, 18 + s * 30, 0, 0, TAU); ctx.fillStyle = C.sauce; ctx.fill(); ctx.restore();
+      }
+    }
+  }
+  // 판정 표시 (그림 기호)
+  const ck = prog(t, 4.45, 4.85);
+  check(R.x, R.y + ph / 2 + 100, 34, ck, C.green);
+  if (ck > 0) { ctx.save(); ctx.globalAlpha *= 0.6; burst(R.x, R.y, prog(t, 4.45, 4.95), 12, 260, 340, C.sauceHi); ctx.restore(); }
+  ctx.restore();
+}
+
+// ---------- S3: 데칠 때 열이 잘 전달돼 고르게 익어요 ----------
+function s3(t) {
+  const a = env(t, 4.75, 8.35, 0.25, 0.35); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const enter = back(prog(t, 4.75, 5.1));
+  ctx.translate(0, (1 - enter) * 700);
+  const cx = W / 2, top = 360, pw = 1300, phh = 560;
+  // 불꽃
+  for (let i = 0; i < 13; i++) {
+    const x = cx - 600 + i * 100, y = top + phh + 110, h = (70 + 25 * Math.sin(t * 13 + i * 1.7)) * prog(t, 4.9, 5.2);
+    ctx.beginPath(); ctx.moveTo(x - 30, y); ctx.quadraticCurveTo(x - 34, y - h * 0.5, x + Math.sin(t * 9 + i) * 8, y - h); ctx.quadraticCurveTo(x + 34, y - h * 0.5, x + 30, y); ctx.closePath();
+    ctx.fillStyle = C.heat; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - 13, y); ctx.quadraticCurveTo(x - 15, y - h * 0.3, x, y - h * 0.55); ctx.quadraticCurveTo(x + 15, y - h * 0.3, x + 13, y); ctx.closePath();
+    ctx.fillStyle = '#ffe07a'; ctx.fill();
+  }
+  // 냄비
+  ctx.fillStyle = '#7d8798'; rrect(cx - pw / 2, top, pw, phh, 50); ctx.fill();
+  ctx.fillStyle = '#5f6878'; rrect(cx - pw / 2 - 80, top + 50, 100, 40, 18); ctx.fill(); rrect(cx + pw / 2 - 20, top + 50, 100, 40, 18); ctx.fill();
+  ctx.fillStyle = '#b9c1d0'; rrect(cx - pw / 2 - 20, top - 18, pw + 40, 36, 18); ctx.fill();
+  // 물 (단면)
+  const wl = top + 70;
+  ctx.save(); rrect(cx - pw / 2 + 30, top + 22, pw - 60, phh - 52, 36); ctx.clip();
+  ctx.fillStyle = '#2f6fc4'; ctx.beginPath(); ctx.moveTo(cx - pw / 2, H);
+  for (let x = cx - pw / 2; x <= cx + pw / 2; x += 10) ctx.lineTo(x, wl + Math.sin(x / 45 + t * 5) * 8);
+  ctx.lineTo(cx + pw / 2, H); ctx.closePath(); ctx.fill();
+  for (let j = 0; j < 30; j++) {
+    const p = ((t * (0.6 + (j % 5) * 0.15) + j * 0.37) % 1);
+    const bx = cx - pw / 2 + 60 + ((j * 131) % (pw - 120)), by = lerp(top + phh - 50, wl, p);
+    ctx.save(); ctx.globalAlpha *= 0.6 * prog(t, 5.0, 5.4); circle(bx + Math.sin(p * 10 + j) * 6, by, 5 + (j % 4) * 3, null, '#bfe1ff', 3); ctx.restore();
+  }
+  // 조각 투입 (데칠 때)
+  const dropK = prog(t, 4.95, 5.4);
+  const py = lerp(-400, top + 300, eout(dropK)) + Math.sin(prog(t, 5.35, 5.75) * Math.PI) * 20;
+  const Lx = cx - 300, Rx = cx + 300, w = 440, h = 300;
+  // 열 전달: 왼쪽(칼집 없음)은 가장자리부터 천천히, 오른쪽(칼집)은 전체가 고르게
+  const heatK = prog(t, 5.5, 7.4);
+  const cookR = eio(heatK);
+  plainPiece(Lx, py, w, h, eio(prog(t, 5.6, 6.8)), eio(prog(t, 6.6, 9.5)) * 0.35);
+  scoredPiece(Rx, py, w, h, { score: 1, open: 0.2 + 0.15 * cookR, cook: cookR, d: 26 }, t);
+  // 열 화살표
+  const ha = prog(t, 5.45, 5.75) * (1 - prog(t, 7.6, 8.0));
+  if (ha > 0) {
+    for (const [x0, deep] of [[Lx, false], [Rx, true]]) {
+      for (let j = 0; j < 6; j++) {
+        const hx = x0 - w / 2 + 45 + j * (w - 90) / 5;
+        const p = ((t * 1.2 + j * 0.23) % 1);
+        const yb = top + phh - 40, ystop = deep ? py - h / 2 + 30 : py + h / 2 + 10;
+        const yy = lerp(yb, ystop, p);
+        ctx.save(); ctx.globalAlpha *= ha * Math.sin(p * Math.PI);
+        ctx.beginPath();
+        for (let k = 0; k <= 8; k++) { const y2 = yy + k * 10; const x2 = hx + Math.sin(y2 / 16 + j) * 7; k ? ctx.lineTo(x2, y2) : ctx.moveTo(x2, y2); }
+        ctx.lineWidth = 8; ctx.strokeStyle = C.heat; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(hx - 14, yy + 12); ctx.lineTo(hx, yy - 4); ctx.lineTo(hx + 14, yy + 12); ctx.stroke();
+        ctx.restore();
+      }
+      // 막힘 표시 — 왼쪽은 표면에서 튕겨남
+      if (!deep) {
+        for (let j = 0; j < 3; j++) {
+          const p = ((t * 2 + j * 0.33) % 1);
+          ctx.save(); ctx.globalAlpha *= ha * (1 - p) * 0.8;
+          ctx.beginPath(); ctx.arc(x0 - 120 + j * 120, py + h / 2 + 14, 20 + p * 30, Math.PI, TAU); ctx.lineWidth = 5; ctx.strokeStyle = '#ffb38a'; ctx.stroke(); ctx.restore();
+        }
+      }
+    }
+  }
+  glow(Rx, py, 360, 'rgba(255,170,90,.6)', 0.5 * heatK * (1 - prog(t, 7.6, 8.2)));
+  ctx.restore();
+  // 튀는 물
+  const sp = prog(t, 5.35, 5.85);
+  if (sp > 0 && sp < 1) for (let j = 0; j < 14; j++) {
+    const dir = (j / 13 - 0.5) * 2.6;
+    ctx.save(); ctx.globalAlpha *= 1 - sp; drop(cx + dir * 420 * sp + (j % 2 ? 300 : -300) * 0.3, wl - Math.sin(sp * Math.PI) * (130 + (j % 3) * 50), 13, '#7fc0ff'); ctx.restore();
+  }
+  // 고르게 익음 → 체크
+  check(Rx, top - 120, 40, prog(t, 7.1, 7.5), C.green);
+  ctx.restore();
+}
+
+// ---------- S4: 칼집이 벌어지면서 모양도 예뻐지고 ----------
+function s4(t) {
+  const a = env(t, 8.05, 10.95, 0.3, 0.3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const cx = W / 2, cy = 540;
+  const zin = eout(prog(t, 8.05, 8.45));
+  const open = eio(prog(t, 8.35, 9.6));
+  const curl = eio(prog(t, 8.9, 10.15));
+  const s = lerp(0.6, 1, zin);
+  ctx.translate(cx, cy); ctx.scale(s, s); ctx.rotate(lerp(-0.08, 0.06, curl) + Math.sin(t * 1.5) * 0.02); ctx.translate(-cx, -cy);
+  glow(cx, cy, 600, 'rgba(255,215,190,.35)', 0.5 + 0.5 * prog(t, 10.1, 10.4));
+  scoredPiece(cx, cy, 760, 520, { score: 1, open, curl, cook: 1, d: 40 }, t);
+  // 예뻐지고 — 반짝
+  const sp = prog(t, 10.15, 10.7);
+  burst(cx, cy, sp, 14, 300, 430, '#ffe3a3', 10);
+  for (let j = 0; j < 6; j++) {
+    const ang = j * 1.05 + 0.5, tw = Math.max(0, Math.sin((t - 10.2) * 6 + j * 1.3));
+    star(cx + Math.cos(ang) * 400, cy + Math.sin(ang) * 300, 30, tw * prog(t, 10.2, 10.4));
+  }
+  ctx.restore();
+}
+
+// ---------- S5: 양념을 머금어 한입마다 맛이 살아나죠 ----------
+function s5(t) {
+  const a = env(t, 10.55, 13.6, 0.3, 0.35); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const cx = W / 2, cy = 560;
+  // 양념이 위에서 쏟아짐
+  const pour = prog(t, 10.7, 11.5);
+  const sauce = eio(prog(t, 10.9, 11.7));
+  const split = eio(prog(t, 11.7, 12.15)); // 한입 크기 세 조각으로
+  const pieces = [-1, 0, 1];
+  // 쏟아지는 양념 줄기
+  if (pour > 0 && pour < 1) {
+    const w = 60 * Math.sin(pour * Math.PI);
+    ctx.fillStyle = C.sauce;
+    ctx.beginPath(); ctx.moveTo(cx - w / 2, 0);
+    for (let y = 0; y <= cy - 120; y += 20) ctx.lineTo(cx - w / 2 + Math.sin(y / 40 + t * 10) * 6, y);
+    ctx.lineTo(cx + w / 2, cy - 120); ctx.lineTo(cx + w / 2, 0); ctx.fill();
+    circle(cx, cy - 120, w * 1.2, C.sauce);
+  }
+  pieces.forEach((p, i) => {
+    const px = cx + p * lerp(0, 430, split), py = cy + Math.sin(t * 2.5 + i) * 10 * split;
+    // 한입마다 — 차례로 맛 폭발
+    const bt = 12.25 + i * 0.28;
+    const pop = Math.sin(prog(t, bt, bt + 0.3) * Math.PI) * 0.12;
+    ctx.save(); ctx.translate(px, py); ctx.scale(1 + pop, 1 + pop);
+    const w = lerp(760, 240, split), dd = lerp(40, 28, split);
+    scoredPiece(0, 0, w, 300, { score: 1, open: 1, curl: lerp(1, 0.85, split), cook: 1, sauce, gloss: sauce * 0.35, d: dd }, t);
+    ctx.restore();
+    if (split > 0.9) {
+      burst(px, py, prog(t, bt, bt + 0.5), 10, 150, 230, i === 1 ? '#ffd166' : C.sauceHi, 9);
+      glow(px, py, 260, 'rgba(255,120,80,.7)', 0.6 * Math.sin(prog(t, bt, bt + 0.6) * Math.PI));
+      // 깨 & 반짝
+      for (let k = 0; k < 7; k++) {
+        const kk = prog(t, bt + 0.05, bt + 0.6);
+        if (kk <= 0 || kk >= 1) continue;
+        const ang = k / 7 * TAU + i;
+        ctx.save(); ctx.globalAlpha *= 1 - kk; ctx.translate(px + Math.cos(ang) * 200 * eout(kk), py + Math.sin(ang) * 160 * eout(kk) - 40 * kk); ctx.rotate(ang);
+        ctx.beginPath(); ctx.ellipse(0, 0, 9, 5, 0, 0, TAU); ctx.fillStyle = '#fff3d6'; ctx.fill(); ctx.restore();
+      }
+    }
+  });
+  // 홈에 고이는 양념 강조 (머금어)
+  if (sauce > 0 && split < 0.5) {
+    for (let j = 0; j < 8; j++) {
+      const p = ((t * 0.9 + j / 8) % 1);
+      ctx.save(); ctx.globalAlpha *= (1 - split * 2) * sauce * (1 - p);
+      drop(cx - 300 + j * 86, cy - 230 + p * 140, 12, C.sauceHi); ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- S6: 오징어에 낸 칼집에는 다 이유가 있었던 거예요 ----------
+function plate(cx, cy, t) {
+  ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(cx, cy + 40, 470, 150, 0, 0, TAU); ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.ellipse(cx, cy, 470, 160, 0, 0, TAU); ctx.fillStyle = '#f4f1ec'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy + 6, 360, 112, 0, 0, TAU); ctx.fillStyle = '#e4e0d8'; ctx.fill();
+  // 채소: 오이·당근·파
+  const veg = [['#6dbb5a', -250, -10, 0.3], ['#ff9b3d', 230, 10, -0.4], ['#8fd16a', -120, 40, 0.8], ['#ff9b3d', 90, -50, 0.2], ['#6dbb5a', 250, -40, -0.9], ['#f2f7e0', -40, 55, 1.2]];
+  veg.forEach(([c, x, y, r]) => { ctx.save(); ctx.translate(cx + x, cy + y); ctx.rotate(r); ctx.fillStyle = c; rrect(-60, -9, 120, 18, 9); ctx.fill(); ctx.restore(); });
+  // 양념에 버무린 오징어 롤들
+  const rolls = [[-170, -30, 0.2], [0, -60, -0.15], [160, -10, 0.3], [-60, 30, -0.4], [90, 50, 0.1], [-250, 40, 0.5]];
+  rolls.forEach(([x, y, r], i) => {
+    ctx.save(); ctx.translate(cx + x, cy + y - 40); ctx.rotate(r);
+    scoredPiece(0, 0, 200, 130, { score: 1, open: 1, curl: 0.85, cook: 1, sauce: 1, gloss: 0.4, d: 18 }, t);
+    ctx.restore();
+  });
+  // 깨
+  for (let k = 0; k < 26; k++) {
+    ctx.save(); ctx.translate(cx - 300 + ((k * 137) % 600), cy - 90 + ((k * 71) % 150)); ctx.rotate(k);
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 4, 0, 0, TAU); ctx.fillStyle = '#fff3d6'; ctx.fill(); ctx.restore();
+  }
+}
+function badgeIcon(n, t) {
+  if (n === 0) { // 양념 묻음
+    ctx.save(); ctx.scale(0.22, 0.22); scoredPiece(0, 20, 300, 220, { score: 1, open: 0.2, sauce: 1, cook: 1, d: 30 }, t); ctx.restore();
+    drop(0, -26, 14, C.sauce);
+  } else if (n === 1) { // 열 전달
+    for (let i = 0; i < 3; i++) {
+      const x = -26 + i * 26, h = 30 + 8 * Math.sin(t * 10 + i * 2);
+      ctx.beginPath(); ctx.moveTo(x - 12, 26); ctx.quadraticCurveTo(x - 14, 26 - h * 0.5, x, 26 - h); ctx.quadraticCurveTo(x + 14, 26 - h * 0.5, x + 12, 26); ctx.fillStyle = C.heat; ctx.fill();
+    }
+    ctx.fillStyle = '#7d8798'; rrect(-44, 26, 88, 18, 6); ctx.fill();
+  } else if (n === 2) { // 예쁜 모양
+    ctx.save(); ctx.scale(0.3, 0.3); scoredPiece(0, 0, 220, 170, { score: 1, open: 1, curl: 0.9, cook: 1, d: 24 }, t); ctx.restore();
+    star(32, -30, 14, 1);
+  } else { // 한입마다 맛
+    ctx.save(); ctx.scale(0.3, 0.3); scoredPiece(0, 0, 200, 150, { score: 1, open: 1, curl: 0.85, cook: 1, sauce: 1, gloss: 0.4, d: 22 }, t); ctx.restore();
+    burst(0, 0, ((t * 0.8) % 1), 8, 34, 44, C.sauceHi, 5);
+  }
+}
+const BADGES = [{ x: 330, y: 360 }, { x: 680, y: 170 }, { x: 1240, y: 170 }, { x: 1590, y: 360 }];
+function s6(t) {
+  const a = env(t, 13.2, DUR, 0.35, 0.45); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  const cx = W / 2, cy = 690;
+  const pin = back(prog(t, 13.25, 13.7));
+  const fly = BADGES.map((_, n) => eio(prog(t, 14.35 + n * 0.07, 14.8 + n * 0.07)));
+  const arrived = prog(t, 14.85, 15.35);
+  const bounce = 1 + 0.06 * Math.sin(arrived * Math.PI);
+  glow(cx, cy - 60, 700, 'rgba(255,170,120,.55)', 0.35 + 0.65 * arrived);
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(pin * bounce, pin * (2 - bounce)); ctx.translate(-cx, -cy);
+  plate(cx, cy, t);
+  ctx.restore();
+  // 연결선
+  const link = prog(t, 13.9, 14.35);
+  BADGES.forEach((b, n) => {
+    if (link <= 0 || fly[n] >= 1) return;
+    ctx.save(); ctx.globalAlpha *= link * (1 - fly[n]);
+    ctx.setLineDash([16, 14]); ctx.lineDashOffset = t * 60; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,214,190,.8)';
+    ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(lerp(b.x, cx, link), lerp(b.y, cy - 60, link)); ctx.stroke(); ctx.restore();
+  });
+  BADGES.forEach((b, n) => {
+    const st = 13.45 + n * 0.2;
+    const p = back(prog(t, st, st + 0.35));
+    if (p <= 0 || fly[n] >= 1) return;
+    const f = fly[n];
+    const x = lerp(b.x, cx, f), y = lerp(b.y, cy - 60, f) + Math.sin(t * 2.5 + n) * 8 * (1 - f) - Math.sin(f * Math.PI) * 120;
+    const s = p * (1 - 0.8 * f);
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    circle(0, 0, 92, 'rgba(255,248,240,.12)', '#ffcfb8', 7);
+    badgeIcon(n, t);
+    ctx.restore();
+  });
+  burst(cx, cy - 60, arrived, 16, 330, 520, '#ffe3a3', 10);
+  if (t > 15.0) for (let j = 0; j < 6; j++) {
+    const ang = j * 1.05 + 0.4, tw = Math.max(0, Math.sin((t - 15) * 5 + j * 1.3));
+    star(cx + Math.cos(ang) * 560, cy - 120 + Math.sin(ang) * 300, 26, tw * prog(t, 15.0, 15.3));
+  }
+  ctx.restore();
+}
+
+window.renderFrame = function (t) {
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  background(t);
+  s1(t); s2(t); s3(t); s4(t); s5(t); s6(t);
+  const f = prog(t, DUR - 0.3, DUR);
+  if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, W, H); }
+};
+window.ready = Promise.resolve();
+</script></body></html>
