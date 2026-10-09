@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 SR = 44100
+VOICE_DIR = 'voice_custom'  # TopView 맞춤 음성: 충신유치원 나레이션
 HERE = Path(__file__).parent
 DUR = 126.0
 N = int(DUR * SR)
@@ -54,7 +55,7 @@ def ma(x, k):
 
 voice = np.zeros(N); speech = np.zeros(N); lines = []
 for nid, st, text in NARR:
-    v = load(HERE / 'voice' / f'{nid}.mp3'); place(voice, v, st)
+    v = load(HERE / VOICE_DIR / f'{nid}.mp3'); place(voice, v, st)
     speech[int(st * SR):int(st * SR) + len(v)] = 1
     lines.append({'id': nid, 't': st, 'e': round(st + len(v) / SR, 3), 'text': text})
 voice *= 0.16 / np.sqrt(np.mean(voice[speech > 0] ** 2))
