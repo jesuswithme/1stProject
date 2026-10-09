@@ -1,0 +1,8 @@
+index.html
+snaps/
+part*.mp4
+master.mp4
+list.txt
+*.log
+mix.m4a
+__pycache__/

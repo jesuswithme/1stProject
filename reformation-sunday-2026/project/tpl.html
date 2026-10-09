@@ -1,0 +1,466 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Reformation Is Still Happening</title>
+<style>
+@font-face{font-family:Gloock;src:url(fonts/Gloock-Regular.ttf)}
+@font-face{font-family:ISerif;src:url(fonts/InstrumentSerif-Regular.ttf)}
+@font-face{font-family:ISerifI;src:url(fonts/InstrumentSerif-Italic.ttf)}
+@font-face{font-family:Crimson;src:url(fonts/CrimsonPro-Regular.ttf)}
+@font-face{font-family:WorkSans;src:url(fonts/WorkSans-Regular.ttf)}
+@font-face{font-family:WorkSans;src:url(fonts/WorkSans-Bold.ttf);font-weight:700}
+:root{--gold:#E3AE3C;--gold2:#F2CB72;--dgold:#A8720E;--char:#1d1c1a;--ivory:#F4EFE4}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
+#root{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:#121110}
+.L{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden}
+.c{position:absolute;left:960px;top:540px;transform:translate(-50%,-50%);white-space:nowrap;text-align:center}
+.ko{font-family:'WenQuanYi Zen Hei',sans-serif;word-break:keep-all;letter-spacing:-0.01em}
+.b{font-weight:700}
+.serif{font-family:Gloock,serif}
+.sans{font-family:WorkSans,sans-serif}
+.gold{color:var(--gold)}
+.ch{display:inline-block;white-space:pre}
+canvas{position:absolute;left:0;top:0}
+</style></head>
+<body><div id="root"></div>
+<script>
+const DATA=__TL__;
+const TL=DATA.L, SFX=DATA.SFX;
+const TOTAL=SFX.END; window.TOTAL=TOTAL;
+const W=1920,H=1080;
+// ---------- helpers
+const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const P=(t,a,b)=>cl((t-a)/(b-a));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const eo=x=>1-Math.pow(1-x,3);
+const eo5=x=>1-Math.pow(1-x,5);
+const ei=x=>x*x*x;
+const eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const eback=x=>{const c1=1.4,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+const win=(t,a,b,fi=.6,fo=.6)=>Math.min(P(t,a,a+fi),1-P(t,b-fo,b));
+function rng(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+const root=document.getElementById('root');
+function mk(tag,cls,parent,css,html){const e=document.createElement(tag);if(cls)e.className=cls;if(css)e.style.cssText=css;if(html!=null)e.innerHTML=html;(parent||root).appendChild(e);return e}
+function layer(z){return mk('div','L',root,`z-index:${z}`)}
+// text with [gold] markup split into chars
+function T(parent,text,css,goldColor){
+  const e=mk('div','c',parent,css);e._ch=[];let g=false;
+  for(const chr of text){ if(chr==='['){g=true;continue} if(chr===']'){g=false;continue}
+    const s=document.createElement('span');s.className='ch';s.textContent=chr;if(g)s.style.color=goldColor||'var(--gold)';e.appendChild(s);e._ch.push(s);}
+  e.style.opacity=0;return e}
+function reveal(e,p,spread=.55,dy=26,blur=10){const n=e._ch.length;
+  for(let i=0;i<n;i++){const lp=cl((p-(i/n)*spread)/(1-spread));const q=eo(lp);const s=e._ch[i];
+    s.style.opacity=q;s.style.transform=`translateY(${(1-q)*dy}px)`;s.style.filter=lp<1?`blur(${(1-q)*blur}px)`:'none';}}
+function show(e,t,a,b,dur=1.0,fo=.6,opts={}){ // reveal at a, fade out ending at b
+  if(t<a-.05||t>b){e.style.opacity=0;return 0}
+  const o=1-P(t,b-fo,b);e.style.opacity=o;reveal(e,P(t,a,a+dur),opts.spread??.55,opts.dy??26,opts.blur??10);return o}
+const setO=(e,o)=>{e.style.opacity=o;e.style.visibility=o<=0.001?'hidden':'visible'};
+
+// ---------- value noise for textures
+function noise2(seed){const r=rng(seed);const G=256;const v=new Float32Array(G*G);for(let i=0;i<G*G;i++)v[i]=r();
+  const sm=x=>x*x*(3-2*x);
+  return (x,y)=>{const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi;const a=xi&255,b=yi&255,a1=(a+1)&255,b1=(b+1)&255;
+    const u=sm(xf),w=sm(yf);const v00=v[b*G+a],v10=v[b*G+a1],v01=v[b1*G+a],v11=v[b1*G+a1];
+    return lerp(lerp(v00,v10,u),lerp(v01,v11,u),w)}}
+const N1=noise2(7),N2=noise2(19),N3=noise2(41);
+const fbm=(n,x,y)=>n(x,y)*.55+n(x*2.03,y*2.03)*.28+n(x*4.1,y*4.1)*.17;
+
+// ---------- door texture (800x1100, arched)
+const DW=800,DH=1100,AR=400;
+function drawDoor(){
+  const cv=document.createElement('canvas');cv.width=DW;cv.height=DH;const g=cv.getContext('2d');
+  const img=g.createImageData(DW,DH);const d=img.data;const PL=5,pw=DW/PL;
+  for(let y=0;y<DH;y++)for(let x=0;x<DW;x++){
+    const pi=Math.floor(x/pw),lx=x-pi*pw;
+    const u=x+fbm(N1,x*.006+pi*3.1,y*.0016)*70;
+    const ring=Math.sin(u*.21+fbm(N2,x*.012,y*.004+pi)*7.0);
+    const streak=fbm(N3,x*.09,y*.006+pi*5);
+    const pl=0.85+0.3*N2(pi*7.3,1.7);
+    let k=(0.42+0.10*ring+0.42*(streak-.5)+0.18*(fbm(N1,x*.03,y*.0009+pi*2)-.5))*pl;
+    // knots
+    if(lx<4||lx>pw-4)k*=0.25; else if(lx<9||lx>pw-9)k*=0.7;
+    k=cl(k,0.05,1.2);
+    const i=(y*DW+x)*4;d[i]=30+k*95;d[i+1]=18+k*62;d[i+2]=10+k*34;d[i+3]=255;}
+  g.putImageData(img,0,0);
+  // iron straps
+  for(const yy of [250,560,870]){const hh=54;
+    const gr=g.createLinearGradient(0,yy,0,yy+hh);gr.addColorStop(0,'#3a3836');gr.addColorStop(.5,'#232120');gr.addColorStop(1,'#141312');
+    g.fillStyle=gr;g.fillRect(0,yy,DW,hh);
+    for(let x=0;x<DW;x+=2){g.fillStyle=`rgba(${120+N1(x*.05,yy)*60},${80+N1(x*.05,yy)*30},40,${N2(x*.03,yy*.1)*.25})`;g.fillRect(x,yy+Math.floor(N3(x*.07,yy)*hh),2,3)}
+    for(let x=40;x<DW;x+=80){const rg=g.createRadialGradient(x-3,yy+hh/2-3,1,x,yy+hh/2,10);rg.addColorStop(0,'#8a8580');rg.addColorStop(1,'#1a1918');g.fillStyle=rg;g.beginPath();g.arc(x,yy+hh/2,9,0,7);g.fill()}}
+  // ring handle
+  g.save();g.translate(640,640);g.strokeStyle='#2c2a28';g.lineWidth=14;g.beginPath();g.arc(0,40,46,0,7);g.stroke();
+  g.strokeStyle='rgba(160,150,135,.35)';g.lineWidth=3;g.beginPath();g.arc(-3,37,48,3.6,5.4);g.stroke();
+  g.fillStyle='#1d1c1b';g.beginPath();g.arc(0,-6,26,0,7);g.fill();g.restore();
+  // lighting: warm key from upper-left + vignette
+  let lg=g.createRadialGradient(DW*.32,DH*.3,40,DW*.45,DH*.5,DH*.85);lg.addColorStop(0,'rgba(255,200,130,0.18)');lg.addColorStop(.5,'rgba(0,0,0,0)');lg.addColorStop(1,'rgba(0,0,0,0.7)');
+  g.fillStyle=lg;g.fillRect(0,0,DW,DH);
+  // arch mask
+  g.globalCompositeOperation='destination-in';g.fillStyle='#000';g.beginPath();g.moveTo(0,DH);g.lineTo(0,AR);g.arc(DW/2,AR,DW/2,Math.PI,0);g.lineTo(DW,DH);g.closePath();g.fill();
+  g.globalCompositeOperation='source-over';
+  // arch edge shade
+  g.strokeStyle='rgba(0,0,0,.6)';g.lineWidth=16;g.beginPath();g.moveTo(0,DH);g.lineTo(0,AR);g.arc(DW/2,AR,DW/2,Math.PI,0);g.lineTo(DW,DH);g.stroke();
+  return cv;}
+function drawFrame(){ // stone arch frame + wall, world 1920x1080 coords, door at (560,-10)
+  const cv=document.createElement('canvas');cv.width=2400;cv.height=1500;const g=cv.getContext('2d');
+  const ox=240,oy=210; // world origin offset in this canvas
+  const img=g.createImageData(2400,1500);const d=img.data;
+  for(let y=0;y<1500;y++)for(let x=0;x<2400;x++){const n=fbm(N2,x*.02,y*.02)*.6+fbm(N3,x*.004,y*.004)*.4;
+    const by=Math.floor((y+3)/90),bx=Math.floor((x+(by%2)*110)/220);const mortar=((y+3)%90<4)||(((x+(by%2)*110)%220)<4);
+    let k=0.11+0.07*n+0.02*N1(bx*3.3,by*2.1);if(mortar)k*=0.55;const i=(y*2400+x)*4;d[i]=k*255*1.0;d[i+1]=k*255*.94;d[i+2]=k*255*.86;d[i+3]=255}
+  g.putImageData(img,0,0);
+  // frame arch
+  const x0=ox+560,y0=oy-10;
+  g.save();g.lineWidth=90;g.strokeStyle='#4a4540';g.beginPath();g.moveTo(x0-45,y0+DH+60);g.lineTo(x0-45,y0+AR);g.arc(x0+DW/2,y0+AR,DW/2+45,Math.PI,0);g.lineTo(x0+DW+45,y0+DH+60);g.stroke();
+  // voussoir lines
+  g.lineWidth=3;g.strokeStyle='rgba(0,0,0,.5)';for(let a=0;a<=12;a++){const th=Math.PI+a*Math.PI/12;g.beginPath();g.moveTo(x0+DW/2+Math.cos(th)*(DW/2),y0+AR+Math.sin(th)*(DW/2));g.lineTo(x0+DW/2+Math.cos(th)*(DW/2+90),y0+AR+Math.sin(th)*(DW/2+90));g.stroke()}
+  for(let yy=y0+AR;yy<y0+DH+60;yy+=110){for(const xx of [x0-90,x0+DW]){g.beginPath();g.moveTo(xx,yy);g.lineTo(xx+90,yy);g.stroke()}}
+  g.restore();
+  // stone texture over frame
+  g.globalCompositeOperation='overlay';g.fillStyle='rgba(120,110,100,.25)';g.fillRect(0,0,2400,1500);g.globalCompositeOperation='source-over';
+  // wall light falloff
+  const lg=g.createRadialGradient(ox+960,oy+520,100,ox+960,oy+540,1300);lg.addColorStop(0,'rgba(0,0,0,0)');lg.addColorStop(1,'rgba(0,0,0,.9)');g.fillStyle=lg;g.fillRect(0,0,2400,1500);
+  // doorway hole (transparent) so light can show behind
+  g.globalCompositeOperation='destination-out';g.fillStyle='#000';g.beginPath();g.moveTo(x0,y0+DH);g.lineTo(x0,y0+AR);g.arc(x0+DW/2,y0+AR,DW/2,Math.PI,0);g.lineTo(x0+DW,y0+DH);g.closePath();g.fill();g.globalCompositeOperation='source-over';
+  return cv;}
+
+// ---------- build layers
+const Lbg=layer(0);
+const Ldoor=layer(5);   // door world
+const Lfx=layer(30);    // particles canvas
+const Ls1=layer(10),Ls3=layer(12),Ls4=layer(12),Ls5=layer(12),Ls6=layer(14),Ls7=layer(40);
+const Ltext2=layer(35);
+const Ltop=layer(90);   // grain + vignette + black
+
+// door world
+const world=mk('div','',Ldoor,'position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0');
+const lightHole=mk('div','',world,`position:absolute;left:560px;top:-10px;width:${DW}px;height:${DH}px;border-radius:${AR}px ${AR}px 0 0;background:radial-gradient(ellipse at 50% 55%,#fffaf0 0%,#ffe9b8 35%,#f2c46a 70%,#c98d2c 100%);opacity:0`);
+const frameCv=drawFrame();frameCv.style.cssText='position:absolute;left:-240px;top:-210px';world.appendChild(frameCv);
+const leafWrap=mk('div','',world,`position:absolute;left:560px;top:-10px;width:${DW}px;height:${DH}px;perspective:2600px;perspective-origin:50% 50%`);
+const leaf=mk('div','',leafWrap,`position:absolute;left:0;top:0;width:${DW}px;height:${DH}px;transform-origin:0 50%;`);
+const doorCv=drawDoor();leaf.appendChild(doorCv);
+const leafShade=mk('div','',leaf,`position:absolute;left:0;top:0;width:${DW}px;height:${DH}px;border-radius:${AR}px ${AR}px 0 0;background:#000;opacity:0`);
+const doorURL=doorCv.toDataURL('image/jpeg',.9);
+const keyLight=mk('div','',Ldoor,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse 60% 70% at 40% 35%,rgba(255,190,110,.10),rgba(0,0,0,0) 60%),radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 40%,rgba(0,0,0,.65) 100%)');
+const bloom=mk('div','',Ldoor,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 52%,#fff8ea 0%,#ffe6ad 45%,#e8b357 100%);opacity:0');
+const rays=mk('div','',Ldoor,'position:absolute;left:-480px;top:-960px;width:2880px;height:2880px;background:repeating-conic-gradient(from 0deg at 50% 50%,rgba(255,240,200,.16) 0deg 4deg,rgba(255,240,200,0) 4deg 11deg);opacity:0;mix-blend-mode:screen');
+const doorDim=mk('div','',Ldoor,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:#0d0c0b;opacity:0');
+
+// ---------- particles / grain
+const fx=mk('canvas','',Lfx);fx.width=W;fx.height=H;const fg=fx.getContext('2d');
+const grainCv=mk('canvas','',Ltop,'width:1920px;height:1080px;opacity:.07;mix-blend-mode:overlay');grainCv.width=480;grainCv.height=270;const gg=grainCv.getContext('2d');
+const grains=[];{const r=rng(5);for(let k=0;k<6;k++){const c=document.createElement('canvas');c.width=480;c.height=270;const x=c.getContext('2d');const im=x.createImageData(480,270);for(let i=0;i<im.data.length;i+=4){const v=r()*255;im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255}x.putImageData(im,0,0);grains.push(c)}}
+const vign=mk('div','',Ltop,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%)');
+const black=mk('div','',Ltop,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:#000;opacity:1');
+const motes=[];{const r=rng(11);for(let i=0;i<170;i++)motes.push({x:r(),y:r(),z:.3+r()*.7,ph:r()*6.28,sp:.2+r()*.8})}
+const burst=[];{const r=rng(23);for(let i=0;i<40;i++)burst.push({a:r()*6.28,v:120+r()*420,s:1+r()*2.5,g:r()})}
+
+// ================= SCENE 1: CHAOS =================
+const s1bg=mk('div','',Ls1,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 50%,#1b1a19,#070707 75%)');
+const ICON=[
+ // phone
+ `<rect x="62" y="18" width="76" height="164" rx="14"/><rect x="72" y="36" width="56" height="118" rx="3" class="f"/><circle cx="100" cy="166" r="5"/>`,
+ // city
+ `<path d="M10 180 V110 H40 V70 H62 V120 H80 V40 H112 V130 H128 V90 H150 V60 H172 V120 H190 V180 Z"/><path d="M88 55h16M88 70h16M88 85h16M88 100h16M156 75h10M156 90h10M48 85h8M48 100h8" />`,
+ // AI network
+ `<circle cx="30" cy="50" r="8"/><circle cx="30" cy="100" r="8"/><circle cx="30" cy="150" r="8"/><circle cx="100" cy="35" r="8"/><circle cx="100" cy="80" r="8"/><circle cx="100" cy="125" r="8"/><circle cx="100" cy="170" r="8"/><circle cx="170" cy="75" r="8"/><circle cx="170" cy="125" r="8"/><path d="M38 50L92 35M38 50L92 80M38 100L92 80M38 100L92 125M38 150L92 125M38 150L92 170M38 50L92 125M108 35L162 75M108 80L162 75M108 125L162 125M108 170L162 125M108 80L162 125"/>`,
+ // family table
+ `<path d="M20 120 H180 M40 120 V180 M160 120 V180"/><circle cx="60" cy="70" r="16"/><path d="M38 118 Q60 86 82 118"/><circle cx="140" cy="70" r="16"/><path d="M118 118 Q140 86 162 118"/><circle cx="100" cy="88" r="11"/><path d="M85 118 Q100 98 115 118"/>`,
+ // empty sanctuary
+ `<path d="M70 20 Q100 -5 130 20 V80 H70 Z"/><path d="M100 10 V80 M70 50 H130"/><path d="M20 110 H85 M115 110 H180 M20 135 H85 M115 135 H180 M20 160 H85 M115 160 H180 M20 185 H85 M115 185 H180"/>`,
+ // hands: child & elder
+ `<rect x="12" y="78" width="70" height="56" rx="16"/><rect x="80" y="80" width="46" height="13" rx="6"/><rect x="80" y="96" width="52" height="13" rx="6"/><rect x="80" y="112" width="48" height="13" rx="6"/><rect x="78" y="127" width="38" height="12" rx="6"/><rect x="146" y="92" width="34" height="28" rx="9"/><rect x="128" y="94" width="22" height="7" rx="3.5"/><rect x="126" y="103" width="24" height="7" rx="3.5"/><rect x="128" y="112" width="22" height="7" rx="3.5"/>`,
+ // person looking at phone
+ `<circle cx="100" cy="52" r="24"/><path d="M48 185 Q50 110 100 104 Q150 110 152 185"/><rect x="82" y="128" width="36" height="52" rx="6" class="f"/>`,
+ // speech bubbles
+ `<path d="M20 40 H120 Q132 40 132 52 V92 Q132 104 120 104 H60 L40 124 V104 H32 Q20 104 20 92 V52 Q20 40 32 40 Z"/><path d="M180 100 H96 Q86 100 86 110 V146 Q86 156 96 156 H150 L166 172 V156 H170 Q180 156 180 146 Z"/><circle cx="56" cy="72" r="4"/><circle cx="76" cy="72" r="4"/><circle cx="96" cy="72" r="4"/>`
+];
+const flashes=[];{const r=rng(3);let t=1.4;let k=0;while(t<29.75){const p=t/30;const gap=lerp(1.45,.26,Math.pow(p,1.1));
+  const side=r();let x=side<.5?lerp(180,700,r()):lerp(1220,1740,r());let y=lerp(170,910,r());if(r()<.25){x=lerp(300,1620,r());y=r()<.5?lerp(140,300,r()):lerp(800,940,r())}
+  flashes.push({t,d:gap*2.1,ic:(k*5+Math.floor(r()*3))%ICON.length,x,y,s:lerp(1.1,2.3,r()),rot:lerp(-8,8,r()),gold:r()<.25,dx:lerp(-30,30,r())});t+=gap;k++}}
+const flashEls=flashes.map(f=>{const e=mk('div','',Ls1,`position:absolute;left:${f.x-100}px;top:${f.y-100}px;width:200px;height:200px;opacity:0`);
+  e.innerHTML=`<svg viewBox="0 0 200 200" width="200" height="200" style="overflow:visible"><g fill="none" stroke="${f.gold?'#E3AE3C':'#d9d2c4'}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">${ICON[f.ic].replace(/class="f"/g,`fill="${f.gold?'rgba(227,174,60,.25)':'rgba(170,200,255,.18)'}"`)}</g></svg>`;return e});
+const waveSvg=mk('div','',Ls1,'position:absolute;left:0;top:0;width:1920px;height:1080px');waveSvg.innerHTML='<svg width="1920" height="1080" style="position:absolute;left:0;top:0"><g id="wv" fill="none" stroke-width="1.6"></g></svg>';
+const wv=waveSvg.querySelector('#wv');const wpaths=[];for(let i=0;i<7;i++){const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('stroke',i%3==0?'rgba(227,174,60,.35)':'rgba(220,214,200,.22)');wv.appendChild(p);wpaths.push(p)}
+const s1scrim=mk('div','',Ls1,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse 50% 22% at 50% 50%,rgba(8,8,8,.85),rgba(8,8,8,0));opacity:0');
+const C1=T(Ls1,'세상은 [빠르게] 변하고 있습니다.','font-size:74px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+const C2=T(Ls1,'교회는 무엇을 [붙들어야] 합니까?','font-size:74px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+const C3=T(Ls1,'무엇은 다시 [개혁]되어야 합니까?','font-size:80px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+function scene1(t){
+  const on=t<30;setO(Ls1,on?1:0);if(!on)return;
+  const amp=8+70*Math.pow(t/30,2.2);
+  for(let i=0;i<wpaths.length;i++){let d='';const yb=540+(i-3)*34;for(let x=0;x<=1920;x+=24){const y=yb+Math.sin(x*.006+t*(1.3+i*.37)+i)*amp*.5*Math.sin(x*.0017+i)+Math.sin(x*.031+t*(4+i))*amp*.25*N1(x*.01+t*2,i*3.3);d+=(x?'L':'M')+x+' '+y.toFixed(1)}wpaths[i].setAttribute('d',d)}
+  waveSvg.style.opacity=cl(t/3)*.9*(1-P(t,29.7,30));
+  const txtOn=Math.max(win(t,6.6,13.8,.6,.8),win(t,14.1,21.2,.6,.8),win(t,21.1,30,.6,.2));
+  s1scrim.style.opacity=txtOn;
+  flashes.forEach((f,i)=>{const e=flashEls[i];const lp=(t-f.t)/f.d;if(lp<0||lp>1){e.style.opacity=0;return}
+    const env=Math.min(lp/.12,1)*Math.min((1-lp)/.25,1);const flick=.75+.25*Math.sin(t*53+i*7);
+    const nearC=Math.abs(f.y-540)<200&&Math.abs(f.x-960)<700;e.style.opacity=env*flick*(nearC?.35*(1-txtOn*.6):.75)*cl(t/1.4);
+    e.style.transform=`translate(${f.dx*lp}px,0) scale(${f.s*(1+.08*lp)}) rotate(${f.rot}deg)`});
+  show(C1,t,TL.c1.t-.25,13.8,1.1,.8);show(C2,t,TL.c2.t-.25,21.2,1.1,.8);show(C3,t,TL.c3.t-.25,29.98,1.2,.05);
+  // jitter as chaos grows
+  const j=t>20?Math.sin(t*61)*Math.pow((t-20)/10,2)*3:0;C3.style.transform=`translate(calc(-50% + ${j}px),-50%)`;
+}
+
+// ================= SCENE 2: KNOCK (door + text) =================
+const scrimB=mk('div','',Ltext2,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 52%,rgba(0,0,0,.82) 100%);opacity:0');
+const Y1517=mk('div','c serif',Ltext2,'top:330px;font-size:250px;color:#E3AE3C;letter-spacing:.04em;text-shadow:0 0 50px rgba(227,174,60,.35),0 6px 30px rgba(0,0,0,.8);opacity:0','1517');
+const K2=T(Ltext2,'한 사람이 문을 두드렸다.','top:770px;font-size:66px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700;text-shadow:0 4px 24px rgba(0,0,0,.9)');
+const K3=T(Ltext2,'교회를 무너뜨리기 위해서가 아니라','top:740px;font-size:58px;color:#d9d2c4;font-family:"WenQuanYi Zen Hei";text-shadow:0 4px 24px rgba(0,0,0,.9)');
+const K4=T(Ltext2,'교회를 [깨우기] 위해서였다.','top:850px;font-size:78px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700;text-shadow:0 4px 24px rgba(0,0,0,.9)');
+function knockShake(t){let s=0;for(const k of SFX.knock){const d=t-k;if(d>=0&&d<.5)s+=Math.exp(-d*14)*Math.sin(d*90)*7}return s}
+function scene2text(t){
+  const on=t>36&&t<55.6;setO(Ltext2,on?1:0);if(!on)return;
+  scrimB.style.opacity=win(t,36.3,55.4,1,.8);
+  const p=P(t,36.5,37.7);const o=win(t,36.5,55.0,.3,.8);Y1517.style.opacity=o;
+  Y1517.style.clipPath=`inset(${(1-eo(p))*100}% 0 0 0)`;
+  const sc=1.06-.06*eo(p)+P(t,37.7,55)*.03;Y1517.style.transform=`translate(-50%,-50%) scale(${sc})`;
+  Y1517.style.letterSpacing=(0.04+0.1*(1-eo(p)))+'em';
+  show(K2,t,TL.k2.t-.2,44.3,1.0,.6);show(K3,t,TL.k3.t-.2,54.8,1.1,.8);show(K4,t,TL.k4.t-.2,54.8,1.1,.8);
+}
+
+// ================= SCENE 3: FIVE SOLAS =================
+const SOL=[["SOLA GRATIA","오직 은혜","우리는 성취가 아니라 [은혜]로 살아간다."],["SOLA FIDE","오직 믿음","우리는 힘이 아니라 [하나님을 신뢰]한다."],["SOLA SCRIPTURA","오직 성경","수많은 목소리 가운데 [말씀]을 다시 듣는다."],["SOLUS CHRISTUS","오직 그리스도","우리의 중심에는 [그리스도]가 계신다."],["SOLI DEO GLORIA","오직 하나님께 영광","우리의 이름이 아니라 [하나님의 영광]을 구한다."]];
+const HIT=[55.4,62.3,69.2,76.1,83.0];const NAR=['s1','s2','s3','s4','s5'];
+const s3glow=mk('div','',Ls3,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse 45% 35% at 50% 44%,rgba(227,174,60,.13),rgba(0,0,0,0) 70%);opacity:0');
+const solaEls=SOL.map((s,i)=>{const g=mk('div','',Ls3,'position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:0;transform-origin:960px 470px');
+  const num=mk('div','c sans',g,'top:255px;font-size:24px;letter-spacing:.5em;color:rgba(227,174,60,.8)',`0${i+1} <span style="opacity:.45">/ 05</span>`);
+  const lat=mk('div','c serif',g,'top:380px;font-size:118px;color:#E3AE3C;text-shadow:0 0 40px rgba(227,174,60,.3)',s[0]);
+  const line=mk('div','',g,'position:absolute;left:960px;top:462px;height:2px;width:520px;margin-left:-260px;background:linear-gradient(90deg,rgba(227,174,60,0),#E3AE3C,rgba(227,174,60,0))');
+  const ko=T(g,s[1],'top:535px;font-size:66px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+  const sen=T(g,s[2],'top:640px;font-size:46px;color:#e6dfd2;font-family:"WenQuanYi Zen Hei"');
+  return {g,num,lat,line,ko,sen}});
+const tiles=SOL.map((s,i)=>{const e=mk('div','c',Ls3,`left:${960+(i-2)*350}px;top:950px;opacity:0`);
+  e.innerHTML=`<div class="serif" style="font-size:30px;color:#E3AE3C;letter-spacing:.06em">${s[0]}</div><div class="ko" style="font-size:24px;color:#cfc8ba;margin-top:6px">${s[1]}</div>`;return e});
+function scene3(t){
+  const on=t>55&&t<91.5;setO(Ls3,on?1:0);if(!on)return;
+  s3glow.style.opacity=win(t,55.2,91,1,1.2);
+  for(let i=0;i<5;i++){const S=solaEls[i],h=HIT[i],nx=i<4?HIT[i+1]:89.0;
+    if(t<h-.05||t>nx+.5){S.g.style.opacity=0}else{
+      const exit=P(t,nx-.4,nx+.3);S.g.style.opacity=1-exit;S.g.style.transform=`translateY(${eio(exit)*300}px) scale(${1-.55*eio(exit)})`;
+      const p=P(t,h,h+.9);S.lat.style.opacity=eo(p);S.lat.style.letterSpacing=(0.02+.5*(1-eo5(p)))+'em';S.lat.style.filter=p<1?`blur(${(1-eo(p))*12}px)`:'none';
+      S.line.style.transform=`scaleX(${eo(P(t,h+.2,h+1.2))})`;S.num.style.opacity=eo(P(t,h+.1,h+.8));
+      S.ko.style.opacity=1;reveal(S.ko,P(t,h+.35,h+1.2));
+      S.sen.style.opacity=1;reveal(S.sen,P(t,TL[NAR[i]].t+1.05,TL[NAR[i]].t+2.6),.6,18,8);}
+    const tp=P(t,nx-.1,nx+.6);const glow=t>89?1+.6*Math.sin(P(t,89.2,90.6)*Math.PI):1;
+    tiles[i].style.opacity=eo(tp)*(1-P(t,90.4,91.3))*.9;tiles[i].style.transform=`translate(-50%,-50%) translateY(${(1-eo(tp))*20}px) scale(${glow>1?1+.04*(glow-1):1})`;
+    tiles[i].firstChild.style.textShadow=glow>1?`0 0 ${20*(glow-1)}px rgba(227,174,60,.8)`:'none';}
+}
+
+// ================= SCENE 4: 1517 -> 2026 =================
+const s4bg=mk('div','',Ls4,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 40%,#22201c,#0b0a09 75%)');
+const odo=mk('div','',Ls4,'position:absolute;left:960px;top:400px;width:800px;height:320px;margin-left:-400px;margin-top:-160px;transform-origin:50% 50%');
+const OLD=[1,5,1,7],NEW=[2,0,2,6];const strips=[];
+for(let i=0;i<4;i++){const box=mk('div','',odo,`position:absolute;left:${i*200}px;top:0;width:200px;height:320px;overflow:hidden`);
+  const seq=[];let d=OLD[i];seq.push(d);do{d=(d+1)%10;seq.push(d)}while(d!==NEW[i]||seq.length<6);
+  const st=mk('div','serif',box,'position:absolute;left:0;top:0;width:200px;text-align:center;font-size:300px;line-height:320px;color:#E3AE3C;text-shadow:0 0 50px rgba(227,174,60,.35)');
+  st.innerHTML=seq.map(x=>`<div>${x}</div>`).join('');strips.push({st,n:seq.length})}
+const R1=T(Ls4,'그러나 종교개혁은 [1517년]에 끝났을까요?','top:730px;font-size:56px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei"');
+const R2=T(Ls4,'아닙니다.','top:740px;font-size:96px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+const R3a=T(Ls4,'ECCLESIA REFORMATA,','top:470px;font-size:104px;color:#F4EFE4;font-family:Gloock;letter-spacing:.04em');
+const R3b=T(Ls4,'SEMPER REFORMANDA','top:600px;font-size:104px;color:#E3AE3C;font-family:Gloock;letter-spacing:.04em;text-shadow:0 0 40px rgba(227,174,60,.35)');
+const R4=T(Ls4,'개혁된 교회는 [계속] 개혁되어야 한다.','top:760px;font-size:56px;color:#e6dfd2;font-family:"WenQuanYi Zen Hei"');
+const flash4=mk('div','',Ls4,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 37%,rgba(255,220,150,.45),rgba(0,0,0,0) 50%);opacity:0');
+// three doors journey
+const jour=mk('div','',Ls4,'position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:0');
+const jw=mk('div','',jour,'position:absolute;left:0;top:0;width:4400px;height:1080px');
+const DX=[960,2200,3440];
+mk('img','',jw,`position:absolute;left:${DX[0]-180}px;top:300px;width:360px;height:495px;filter:drop-shadow(0 0 30px rgba(0,0,0,.8))`).src=doorURL;
+mk('div','',jw,`position:absolute;left:${DX[0]-210}px;top:270px;width:420px;height:540px;border:10px solid #3e3934;border-bottom:none;border-radius:210px 210px 0 0;box-sizing:border-box`);
+const jsvg=mk('div','',jw,'position:absolute;left:0;top:0;width:4400px;height:1080px');
+jsvg.innerHTML=`<svg width="4400" height="1080" style="position:absolute;left:0;top:0;overflow:visible"><g fill="none" stroke="#E3AE3C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+<path id="thread" d="M${DX[0]} 820 C ${DX[0]+400} 860, ${DX[1]-400} 860, ${DX[1]} 820 S ${DX[2]-400} 780, ${DX[2]} 820" stroke-width="3" stroke-dasharray="4000" stroke-dashoffset="4000"/>
+<g id="church"><path d="M${DX[1]-260} 820 V420 L${DX[1]} 220 L${DX[1]+260} 420 V820"/><path d="M${DX[1]} 220 V120 M${DX[1]-40} 160 H${DX[1]+40}"/><path d="M${DX[1]-120} 820 V560 Q${DX[1]} 440 ${DX[1]+120} 560 V820 M${DX[1]} 820 V500"/><circle cx="${DX[1]}" cy="350" r="44"/><path d="M${DX[1]-44} 350 H${DX[1]+44} M${DX[1]} 306 V394"/><path d="M${DX[1]-30} 690 v30 M${DX[1]+30} 690 v30"/></g>
+<g id="home"><path d="M${DX[2]-280} 820 V480 L${DX[2]} 270 L${DX[2]+280} 480 V820"/><rect x="${DX[2]-85}" y="560" width="170" height="260" rx="6"/><circle cx="${DX[2]+50}" cy="700" r="8"/><rect x="${DX[2]+130}" y="520" width="100" height="100" rx="4" fill="rgba(255,205,120,.35)"/><path d="M${DX[2]+180} 520 V620 M${DX[2]+130} 570 H${DX[2]+230}"/><rect x="${DX[2]-230}" y="520" width="100" height="100" rx="4" fill="rgba(255,205,120,.35)"/><path d="M${DX[2]-180} 520 V620 M${DX[2]-230} 570 H${DX[2]-130}"/><path d="M${DX[2]+150} 330 V250 H${DX[2]+200} V368"/></g>
+<path d="M0 822 H4400" stroke="rgba(227,174,60,.18)" stroke-width="2"/></g></svg>`;
+const thread=jsvg.querySelector('#thread');const churchG=jsvg.querySelector('#church'),homeG=jsvg.querySelector('#home');
+const homeGlow=mk('div','',jw,`position:absolute;left:${DX[2]-85}px;top:560px;width:170px;height:260px;background:radial-gradient(ellipse at 50% 100%,rgba(255,210,130,.55),rgba(255,210,130,0) 70%);opacity:0`);
+const churchGlow=mk('div','',jw,`position:absolute;left:${DX[1]-120}px;top:460px;width:240px;height:360px;background:radial-gradient(ellipse at 50% 100%,rgba(255,210,130,.45),rgba(255,210,130,0) 70%);opacity:0`);
+function scene4(t){
+  const on=t>90&&t<130.2;setO(Ls4,on?1:0);if(!on)return;
+  s4bg.style.opacity=win(t,90,130,1,1.2);
+  // odometer
+  const oo=win(t,90.3,118.2,1.4,.8);odo.style.opacity=oo;
+  const mv=eio(P(t,104.9,106.0));odo.style.transform=`translateY(${-215*mv}px) scale(${(1+.03*P(t,91,101))*(1-.55*mv)})`;
+  strips.forEach((s,i)=>{const p=eio(P(t,101.9+i*.18,103.6+i*.18));s.st.style.transform=`translateY(${-(s.n-1)*320*p}px)`;
+    s.st.style.filter=(p>0&&p<1)?`blur(${Math.sin(p*Math.PI)*5}px)`:'none'});
+  flash4.style.opacity=Math.max(0,1-Math.abs(t-104.3)/.6)*.9;
+  show(R1,t,TL.r1.t-.2,101.3,1.2,.5);show(R2,t,TL.r2.t-.1,105.3,.6,.5,{spread:.3,dy:10,blur:14});
+  show(R3a,t,TL.r3.t-.2,118.0,1.6,.7,{spread:.65});show(R3b,t,TL.r3.t+1.6,118.0,1.6,.7,{spread:.65});
+  show(R4,t,TL.r4.t-.2,118.0,1.2,.7);
+  // journey of doors
+  const jo=win(t,117.9,130,1.0,1.4);jour.style.opacity=jo;
+  const cam=eio(P(t,119.2,122.6))*(DX[1]-DX[0])+eio(P(t,123.6,126.8))*(DX[2]-DX[1]);
+  jw.style.transform=`translateX(${960-DX[0]-cam}px)`;
+  thread.setAttribute('stroke-dashoffset',4000-4000*eio(P(t,118.6,127.2))*.98);
+  churchG.style.opacity=eo(P(t,120.2,121.8));homeG.style.opacity=eo(P(t,124.4,126.0));
+  churchGlow.style.opacity=eo(P(t,121.2,122.8));homeGlow.style.opacity=eo(P(t,125.6,127.6))*(0.8+.2*Math.sin(t*3));
+}
+
+// ================= SCENE 5: DISCERN =================
+const s5bg=mk('div','',Ls5,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 50%,#1e1d1b,#0c0b0a 80%)');
+const D0=T(Ls5,'오늘 [무엇이 다시 형성되어야] 하는가?','top:510px;font-size:64px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+const DQ=['d1','d2','d3','d4','d5'].map((k,i)=>{const txt=TL[k].text.replace('?','[?]');return T(Ls5,txt,'top:540px;font-size:112px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700')});
+const DEND=[141.0,144.7,148.4,152.2,156.2];
+// participation card (from doc design)
+const card=mk('div','',Ls5,'position:absolute;left:230px;top:150px;width:520px;height:780px;background:#232221;border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.7),0 0 0 1px rgba(227,174,60,.15);opacity:0;transform-origin:50% 80%');
+card.innerHTML=`<img src="wcrc.png" style="position:absolute;left:52px;top:46px;height:52px;clip-path:inset(0 72% 0 0)"><div class="sans" style="position:absolute;left:150px;top:58px;font-size:15px;line-height:17px;color:#7d7a74">World Communion<br>of Reformed Churches</div>
+<div class="sans" style="position:absolute;left:0;width:520px;top:170px;text-align:center;font-weight:700;font-size:21px;letter-spacing:.06em;color:#E3AE3C">OUR TIME · 95 THESES</div>
+<div class="ko" style="position:absolute;left:48px;top:225px;font-size:56px;font-weight:700;color:#fff;line-height:72px">우리 시대의<br><span style="padding-left:150px">95 개조</span></div>
+<div class="sans" style="position:absolute;left:0;width:520px;top:400px;text-align:center;font-weight:700;font-size:22px;color:#cfcac0;letter-spacing:.04em">THESIS &nbsp;No. ______</div>
+<div class="ko" style="position:absolute;left:62px;top:470px;font-size:34px;font-weight:700;color:#E3AE3C;line-height:48px">오늘 무엇이<br>&nbsp;&nbsp;&nbsp;다시 형성되어야 합니까 ?</div>
+<div style="position:absolute;left:62px;top:612px;width:396px;height:1px;background:#6b6862"></div><div style="position:absolute;left:62px;top:668px;width:396px;height:1px;background:#6b6862"></div><div style="position:absolute;left:62px;top:724px;width:396px;height:1px;background:#6b6862"></div>
+<svg width="520" height="780" style="position:absolute;left:0;top:0"><path id="pen" d="M70 600 c12-18 18 8 30-6 s16-14 24 2 10-12 22-8 8 14 20 2 12-16 22-4 6 10 18 0 14-12 24 2 10-8 20-6 12 10 24-2 10-14 22 0 8 8 20-4 12-10 22 2 M70 656 c10-14 20 6 30-4 s14-16 26 0 10-10 20-6 10 12 22 0 10-14 22-2 8 8 20-2 12-12 24 2" fill="none" stroke="#f4efe4" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="1200" stroke-dashoffset="1200"/></svg>`;
+const pen=card.querySelector('#pen');
+const D6=T(Ls5,'우리 시대의 [95개조]','left:1000px;top:380px;font-size:60px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+const D7a=T(Ls5,'오늘 우리가 다시 붙여야 할','left:1000px;top:560px;font-size:58px;color:#e6dfd2;font-family:"WenQuanYi Zen Hei"');
+const D7b=T(Ls5,'[한 문장]은 무엇입니까?','left:1000px;top:650px;font-size:66px;color:#F4EFE4;font-family:"WenQuanYi Zen Hei";font-weight:700');
+function scene5(t){
+  const on=t>129.6&&t<170.6;setO(Ls5,on?1:0);if(!on)return;
+  s5bg.style.opacity=win(t,129.6,170.5,1,1);
+  // heading: center then to top
+  const hv=show(D0,t,TL.d0.t-.2,156.4,1.3,.8);const m=eio(P(t,135.6,136.8));
+  D0.style.top=lerp(510,150,m)+'px';D0.style.transform=`translate(-50%,-50%) scale(${1-.42*m})`;if(hv)D0.style.opacity=hv*(1-.35*m);
+  ['d1','d2','d3','d4','d5'].forEach((k,i)=>{show(DQ[i],t,TL[k].t-.25,DEND[i],1.0,.6,{spread:.4,dy:14,blur:16});const p=P(t,TL[k].t-.25,DEND[i]);DQ[i].style.transform=`translate(-50%,-50%) scale(${1+.04*p})`});
+  // card
+  const cp=eo(P(t,156.5,158.2));const co=Math.min(cp,1-P(t,169.0,170.2));card.style.opacity=co;
+  card.style.transform=`translateY(${(1-cp)*260}px) rotate(${-7+4*cp+.6*Math.sin(t*.5)}deg)`;
+  pen.setAttribute('stroke-dashoffset',1200-1200*eio(P(t,164.2,168.6)));
+  show(D6,t,TL.d6.t-.1,161.9,1.0,.6);D6.style.transform='translate(0,-50%)';
+  show(D7a,t,TL.d7.t-.2,169.2,1.2,.8);D7a.style.transform='translate(0,-50%)';show(D7b,t,TL.d7.t+1.3,169.2,1.2,.8);D7b.style.transform='translate(0,-50%)';
+}
+[D6,D7a,D7b].forEach(e=>{e.style.textAlign='left'});
+
+// ================= SCENE 6: FORMATION (ivory) =================
+const s6=mk('div','',Ls6,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 40% 45%,#FBF7EE,#EFE8DA 80%)');
+const ill=mk('div','',Ls6,'position:absolute;left:180px;top:200px;width:700px;height:700px');
+const STK='fill="none" stroke="#2a2826" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"';
+const ILL=[
+ // 1. child hand opening Bible
+ `<g ${STK}><path d="M120 470 Q350 410 350 440 Q350 410 580 470 V300 Q350 250 350 280 Q350 250 120 300 Z" fill="#FBF7EE"/><path d="M350 280 V440"/><path d="M170 330 Q260 305 320 315 M170 360 Q260 335 320 345 M170 390 Q260 365 320 375 M380 315 Q440 305 530 330 M380 345 Q440 335 530 360 M380 375 Q440 365 530 390" stroke="#B07A12" stroke-width="3"/><path d="M335 140 V215 M300 178 H370" stroke="#B07A12" stroke-width="6"/></g>
+  <g ${STK}><rect x="470" y="440" width="96" height="70" rx="22" fill="#F6E7CF"/><rect x="430" y="436" width="62" height="18" rx="9" fill="#F6E7CF"/><rect x="424" y="458" width="68" height="18" rx="9" fill="#F6E7CF"/><rect x="430" y="480" width="62" height="18" rx="9" fill="#F6E7CF"/><path d="M566 470 H640"/></g>`,
+ // 2. family table
+ `<g ${STK}><path d="M80 470 H620 M130 470 V600 M570 470 V600"/><circle cx="200" cy="300" r="46" fill="#F6E7CF"/><path d="M120 470 Q125 360 200 356 Q275 360 280 470" fill="#FBF7EE"/><circle cx="500" cy="300" r="46" fill="#F6E7CF"/><path d="M420 470 Q425 360 500 356 Q575 360 580 470" fill="#FBF7EE"/><circle cx="350" cy="350" r="34" fill="#F6E7CF"/><path d="M292 470 Q296 398 350 394 Q404 398 408 470" fill="#FBF7EE"/><path d="M250 210 q20-20 40 0 M410 210 q20-20 40 0" stroke="#B07A12" stroke-width="4"/><ellipse cx="350" cy="462" rx="44" ry="10" stroke="#B07A12"/></g>`,
+ // 3. young & old praying together
+ `<g ${STK}><circle cx="240" cy="250" r="44" fill="#F6E7CF"/><path d="M150 600 Q150 330 245 316 Q330 330 330 600" fill="#FBF7EE"/><circle cx="460" cy="262" r="44" fill="#F6E7CF"/><path d="M370 600 Q372 345 462 330 Q550 345 552 600" fill="#FBF7EE"/><path d="M238 210 q-30 20 -6 50 M452 225 q20-30 40-10" stroke="#888" stroke-width="3"/><path d="M300 420 L330 360 L340 430 Z M400 430 L410 362 L440 422 Z" fill="#F6E7CF"/><path d="M350 120 V170 M320 140 L350 170 L380 140" stroke="#B07A12" stroke-width="4"/></g>`,
+ // 4. generations worshipping (from behind)
+ `<g ${STK}><path d="M60 600 H640" stroke="#B07A12" stroke-width="3"/><circle cx="170" cy="250" r="44" fill="#F6E7CF"/><path d="M100 600 Q100 320 170 310 Q240 320 240 600" fill="#FBF7EE"/><circle cx="330" cy="330" r="34" fill="#F6E7CF"/><path d="M276 600 Q276 386 330 378 Q384 386 384 600" fill="#FBF7EE"/><circle cx="470" cy="270" r="42" fill="#F6E7CF"/><path d="M404 600 Q404 330 470 322 Q536 330 536 600" fill="#FBF7EE"/><circle cx="580" cy="390" r="26" fill="#F6E7CF"/><path d="M540 600 Q540 432 580 426 Q620 432 620 600" fill="#FBF7EE"/><path d="M350 90 Q350 60 380 60 Q350 60 350 30 Q350 60 320 60 Q350 60 350 90" stroke="#B07A12" fill="rgba(227,174,60,.25)"/></g>`];
+const illEls=ILL.map(s=>{const e=mk('div','',ill,'position:absolute;left:0;top:0;width:700px;height:700px;opacity:0');e.innerHTML=`<svg viewBox="0 0 700 700" width="700" height="700">${s}</svg>`;return e});
+const illHalo=mk('div','',ill,'position:absolute;left:-60px;top:-60px;width:820px;height:820px;border-radius:50%;background:radial-gradient(circle,rgba(227,174,60,.18),rgba(227,174,60,0) 65%);z-index:-1');
+const FL=['[믿는 것]을 고백하고','고백한 것을 [실천]하고','실천한 것이 우리를 [형성]하며','형성된 삶을 [다음 세대]에 전수한다.'];
+const FE=FL.map((s,i)=>{const e=T(Ls6,s,`left:960px;top:${330+i*125}px;font-size:54px;color:#2a2826;font-family:"WenQuanYi Zen Hei";font-weight:700`,'#A8720E');e.style.transform='translate(0,-50%)';e.style.textAlign='left';return e});
+const FK=['f1','f2','f3','f4'];
+const chain=mk('div','',Ls6,'position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:0');
+const CH=[['CONFESSION','고백'],['PRACTICE','실천'],['FORMATION','형성'],['TRANSMISSION','전수']];const CX=[330,750,1170,1590];
+chain.innerHTML=`<svg width="1920" height="1080" style="position:absolute;left:0;top:0"><g fill="none" stroke="#A8720E" stroke-width="3" stroke-linecap="round">${[0,1,2].map(i=>`<path class="ar" d="M${CX[i]+150} 540 H${CX[i+1]-150} M${CX[i+1]-166} 528 L${CX[i+1]-150} 540 L${CX[i+1]-166} 552" stroke-dasharray="300" stroke-dashoffset="300"/>`).join('')}</g></svg>`+
+ CH.map((c,i)=>`<div class="cn" style="position:absolute;left:${CX[i]}px;top:540px;transform:translate(-50%,-50%);text-align:center;opacity:0"><div class="sans" style="font-weight:700;font-size:34px;letter-spacing:.12em;color:#2a2826">${c[0]}</div><div class="ko" style="font-size:30px;color:#A8720E;margin-top:14px;font-weight:700">${c[1]}</div></div>`).join('')+
+ `<div class="sans" style="position:absolute;left:960px;top:330px;transform:translate(-50%,-50%);font-size:22px;letter-spacing:.5em;color:#A8720E;font-weight:700">D6 FORMATION</div>`;
+const arrows=[...chain.querySelectorAll('.ar')],nodes=[...chain.querySelectorAll('.cn')];
+// hands handoff
+function handSVG(fill){return `<g stroke="#2a2826" stroke-width="5" stroke-linejoin="round" fill="${fill}"><rect x="-260" y="-70" width="120" height="140" rx="10" fill="#B07A12" stroke="none" opacity=".85"/><rect x="-150" y="-62" width="190" height="124" rx="40"/><rect x="20" y="-60" width="130" height="30" rx="15"/><rect x="20" y="-26" width="150" height="30" rx="15"/><rect x="20" y="8" width="138" height="30" rx="15"/><rect x="14" y="40" width="106" height="28" rx="14"/><rect x="-40" y="-104" width="104" height="30" rx="15" transform="rotate(28 -40 -90)"/></g>`}
+const hands=mk('div','',Ls6,'position:absolute;left:0;top:0;width:1920px;height:1080px;opacity:0');
+hands.innerHTML=`<svg width="1920" height="1080" style="position:absolute;left:0;top:0;overflow:visible"><g id="hb">${handSVG('#F6E7CF')}</g><g id="hs">${handSVG('#F9EBD6')}</g>
+<g id="cd"><rect x="-70" y="-100" width="140" height="200" rx="6" fill="#F4F0E6" stroke="#A8720E" stroke-width="3"/><text x="0" y="-62" text-anchor="middle" font-family="WorkSans" font-weight="700" font-size="13" fill="#A8720E" letter-spacing="2">D6 FORMATION</text><path d="M-46 -30 H46 M-46 -8 H46 M-46 14 H30" stroke="#2a2826" stroke-width="3"/><path d="M-46 50 H46 M-46 72 H46" stroke="#bbb" stroke-width="2"/></g></svg>`;
+const hb=hands.querySelector('#hb'),hs=hands.querySelector('#hs'),cd=hands.querySelector('#cd');
+const handGlow=mk('div','',Ls6,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse 30% 30% at 50% 50%,rgba(255,215,140,.5),rgba(255,215,140,0));opacity:0');
+const s6mask=Ls6;
+function scene6(t){
+  const on=t>169.4&&t<210.3;setO(Ls6,on?1:0);if(!on)return;
+  const rp=eio(P(t,169.5,171.6));Ls6.style.clipPath=`circle(${rp*1150}px at 960px 540px)`;
+  const fade=1-P(t,208.6,210.2);Ls6.style.opacity=fade;
+  for(let i=0;i<4;i++){const a=TL[FK[i]].t-.3,b=i<3?TL[FK[i+1]].t-.3:189.4;
+    illEls[i].style.opacity=win(t,a-.2,b+.4,.8,.7)*(t<189.6?1:1-P(t,189,189.6));illEls[i].style.transform=`scale(${.96+.06*P(t,a,b+.6)})`;
+    const v=show(FE[i],t,a,189.3,1.1,.6);if(v&&t>b+.2)FE[i].style.opacity=v*.42;FE[i].style.transform='translate(0,-50%)'}
+  illHalo.style.opacity=win(t,171,189.4,1,.6);
+  // chain
+  const co=win(t,189.4,197.2,.5,.6);chain.style.opacity=co;
+  nodes.forEach((n,i)=>{const p=eo(P(t,189.7+i*1.15,190.5+i*1.15));n.style.opacity=p;n.style.transform=`translate(-50%,-50%) translateY(${(1-p)*20}px)`});
+  arrows.forEach((a,i)=>a.setAttribute('stroke-dashoffset',300-300*eio(P(t,190.3+i*1.15,191.1+i*1.15))));
+  // hands
+  const ho=win(t,197.2,209,.8,.6);hands.style.opacity=ho;
+  const bi=eo(P(t,197.2,199.2)),si=eo(P(t,198.0,200.0));
+  hb.setAttribute('transform',`translate(${lerp(-200,640,bi)} ${lerp(560,520,bi)}) scale(1.25) rotate(-6)`);
+  hs.setAttribute('transform',`translate(${lerp(2200,1330,si)} ${lerp(640,600,si)}) scale(-.78 .78) rotate(-6)`);
+  const cp=eio(P(t,200.6,203.8));const cx=lerp(lerp(-200,640,bi)+120,1200,cp),cy=lerp(lerp(560,520,bi)-40,560,cp)-Math.sin(cp*Math.PI)*90;
+  cd.setAttribute('transform',`translate(${cx} ${cy}) rotate(${lerp(-12,8,cp)}) scale(${lerp(1,.86,cp)})`);
+  handGlow.style.opacity=eo(P(t,203.4,205.4))*ho*.9;
+}
+
+// ================= SCENE 7: ENDING texts on light =================
+const s7=mk('div','',Ls7,'position:absolute;left:0;top:0;width:1920px;height:1080px;background:radial-gradient(ellipse at 50% 46%,#FFFBF2,#F6ECD8 60%,#EBD9B5 100%)');
+const s7rays=mk('div','',Ls7,'position:absolute;left:-480px;top:-1100px;width:2880px;height:2880px;background:repeating-conic-gradient(from 0deg at 50% 50%,rgba(227,174,60,.07) 0deg 3deg,rgba(227,174,60,0) 3deg 10deg)');
+const E0=T(Ls7,'REFORMATION IS STILL HAPPENING.','top:380px;font-size:88px;color:#2a2826;font-family:Gloock;letter-spacing:.05em');
+const E1=T(Ls7,'개혁은 아직 [끝나지 않았습니다.]','top:540px;font-size:70px;color:#2a2826;font-family:"WenQuanYi Zen Hei";font-weight:700','#A8720E');
+const E2=T(Ls7,'[성령께서] 오늘도 교회를 다시 형성하고 계십니다.','top:660px;font-size:46px;color:#4a4642;font-family:"WenQuanYi Zen Hei"','#A8720E');
+const LK=mk('div','c',Ls7,'top:300px;opacity:0',`<span class="ko" style="font-size:36px;font-weight:700;color:#2a2826">예수촌교회</span><span style="display:inline-block;width:2px;height:30px;background:#A8720E;margin:0 26px;vertical-align:-4px"></span><span class="sans" style="font-size:30px;letter-spacing:.18em;color:#A8720E;font-weight:700">2026 REFORMATION SUNDAY</span>`);
+const E3=['고백에서 삶으로.','교회에서 가정으로.','우리에게서 [다음 세대로.]'].map((s,i)=>T(Ls7,s,`top:${470+i*110}px;font-size:72px;color:#2a2826;font-family:"WenQuanYi Zen Hei";font-weight:700`,'#A8720E'));
+const E3T=[233.4,235.1,236.8];
+const PR=T(Ls7,'“주여, 우리를 다시 개혁하소서.”','top:470px;font-size:66px;color:#2a2826;font-family:"WenQuanYi Zen Hei"','#A8720E');
+const logos=mk('div','c',Ls7,'top:900px;opacity:0',`<img src="wcrc.png" style="height:64px;vertical-align:middle"><span style="display:inline-block;width:1px;height:56px;background:#b9ad96;margin:0 40px;vertical-align:middle"></span><span class="ko" style="font-size:34px;font-weight:700;color:#2a2826;vertical-align:middle">예수촌교회</span><span class="sans" style="font-size:22px;letter-spacing:.3em;color:#A8720E;font-weight:700;vertical-align:middle;margin-left:26px">D6 FORMATION</span>`);
+const PRsub=mk('div','c sans',Ls7,'top:575px;font-size:22px;letter-spacing:.4em;color:#A8720E;opacity:0','REFORMATION IS STILL HAPPENING');
+function scene7(t){
+  const on=t>221.0;setO(Ls7,on?1:0);if(!on)return;
+  Ls7.style.opacity=P(t,221.2,223.0);
+  s7rays.style.transform=`rotate(${t*1.2}deg)`;
+  show(E0,t,221.8,230.9,1.8,.7,{spread:.6,dy:10,blur:12});show(E1,t,TL.e1.t-.2,230.9,1.1,.7);show(E2,t,TL.e2.t-.2,230.9,1.2,.7);
+  LK.style.opacity=win(t,231.4,239.2,1,.7);LK.style.letterSpacing='0';
+  E3.forEach((e,i)=>show(e,t,E3T[i],239.2,1.0,.7));
+  show(PR,t,239.7,246.6,1.6,.9,{spread:.5,dy:12,blur:10});PRsub.style.opacity=win(t,241.0,246.6,1.2,.9);
+  logos.style.opacity=win(t,240.6,246.6,1.2,.9);
+}
+
+// ================= DOOR WORLD controller =================
+function doorWorld(t){
+  let vis=0,s=1,cx=960,cy=540,dim=0,open=0,hole=0,bl=0,ry=0;
+  if(t>=30&&t<91.5){vis=P(t,30.35,31.6);
+    if(t<55){const p=eio(P(t,30,55));s=lerp(1.9,1.35,p);cy=lerp(600,560,p);}
+    else {const p=P(t,55,91);s=lerp(1.35,1.18,p);cy=560;dim=lerp(0,.88,eo(P(t,54.8,56.5)));vis*=1-P(t,89.6,91.4)}}
+  else if(t>=209.3&&t<223.5){vis=P(t,209.4,211.4);
+    const p1=eio(P(t,209.4,214.6));s=lerp(.80,.88,p1);cy=545;
+    open=eio(P(t,214.6,221.0));hole=P(t,214.7,216.5);
+    const push=eio(P(t,215.8,222.6));s=lerp(s,3.6,push);cy=lerp(cy,560,push);
+    bl=cl(P(t,217.5,222.8));ry=P(t,216.8,219.2);}
+  setO(Ldoor,vis);if(vis<=0)return {s,cx,cy};
+  const sh=knockShake(t);
+  world.style.transform=`translate(${960+sh}px,${540+sh*.4}px) scale(${s}) translate(${-cx}px,${-cy}px)`;
+  doorDim.style.opacity=dim;
+  leaf.style.transform=`rotateY(${78*open}deg)`;leafShade.style.opacity=open*.55;
+  lightHole.style.opacity=hole;lightHole.style.boxShadow=`0 0 ${200*hole}px ${60*hole}px rgba(255,220,150,${.5*hole})`;
+  bloom.style.opacity=bl;rays.style.opacity=ry*.5*(1-bl*.6);rays.style.transform=`rotate(${t*2}deg)`;
+  keyLight.style.opacity=1-bl;
+  return {s,cx,cy};
+}
+
+// ================= particles =================
+function particles(t,cam){
+  fg.clearRect(0,0,W,H);
+  // dust in door light
+  let a=0;if(t>30.5&&t<55.5)a=win(t,30.5,55.5,1.5,.8)*.5;else if(t>55&&t<90)a=.18*win(t,55,90,1,1);else if(t>130&&t<170)a=.12*win(t,130,170,2,2);else if(t>209.5&&t<247)a=win(t,209.5,247,2,1.5)*(t>221?.55:.4);
+  if(a>0){const warm=t>214;for(let i=0;i<motes.length;i++){const m=motes[i];
+      let x=((m.x+t*.006*m.sp+.02*Math.sin(t*.4+m.ph))%1+1)%1*W,y=((m.y-t*.012*m.sp*(warm?2:1)+.02*Math.cos(t*.3+m.ph))%1+1)%1*H;
+      const tw=.5+.5*Math.sin(t*1.7+m.ph*3);const r=(1+2.2*m.z)*(t>221?1.4:1);
+      fg.fillStyle=t>221?`rgba(200,140,40,${a*tw*m.z})`:`rgba(255,${warm?226:214},${warm?170:160},${a*tw*m.z})`;fg.beginPath();fg.arc(x,y,r,0,7);fg.fill()}}
+  // impact bursts
+  for(const k of SFX.knock){const d=t-k;if(d<0||d>1.6)continue;
+    const big=k<40||k>200;const ix=960+(960-cam.cx)*cam.s,iy=540+(680-cam.cy)*cam.s;
+    const fl=Math.exp(-d*9);const rg=fg.createRadialGradient(ix,iy,0,ix,iy,big?520:300);rg.addColorStop(0,`rgba(255,215,150,${(big?.32:.16)*fl})`);rg.addColorStop(1,'rgba(255,215,150,0)');fg.fillStyle=rg;fg.fillRect(0,0,W,H);
+    if(k>=55&&k<90)continue;
+    burst.forEach(b=>{const r=b.v*(1-Math.exp(-d*3))*.9;const x=ix+Math.cos(b.a)*r,y=iy+Math.sin(b.a)*r*.7+d*d*60;const o=(1-d/1.6)*.7;fg.fillStyle=`rgba(230,205,160,${o})`;fg.beginPath();fg.arc(x,y,b.s,0,7);fg.fill()});
+    // ring
+    fg.strokeStyle=`rgba(255,220,160,${.4*Math.exp(-d*4)})`;fg.lineWidth=2;fg.beginPath();fg.arc(ix,iy,40+d*420,0,7);fg.stroke();}
+}
+
+// ================= master =================
+function setTime(t){
+  const cam=doorWorld(t)||{s:1,cx:960,cy:540};
+  scene1(t);scene2text(t);scene3(t);scene4(t);scene5(t);scene6(t);scene7(t);
+  particles(t,cam);
+  gg.drawImage(grains[Math.floor(t*24)%grains.length],0,0);
+  // black: open from black at start; 30.0 hard cut; scene gaps; final fade
+  let bk=1-P(t,0.4,2.2);
+  if(t>=30&&t<30.5)bk=1;
+  bk=Math.max(bk,P(t,246.6,249.0));
+  black.style.opacity=bk;
+  vign.style.opacity=t>221&&t<247?.25:(t>169.5&&t<209.5?.4:1);
+}
+window.setTime=setTime;
+setTime(0);
+</script></body></html>
