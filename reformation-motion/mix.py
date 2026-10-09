@@ -351,8 +351,9 @@ music = filt(music, hi=7000)
 # ---------- 믹스 ----------
 k = int(0.35 * SR)
 duck = np.convolve(active, np.ones(k) / k, mode='same')
-bed_m = music * (1 - 0.5 * duck)
-mix = voice * 1.25 + mono(bed_m) * 1.5 + sfx * (1 - 0.3 * duck)[:, None]
+bed_m = music * (1 - 0.8 * duck)
+sfx_d = sfx * (1 - 0.72 * duck)[:, None]
+mix = voice * 1.55 + mono(bed_m) * 1.5 + sfx_d
 mix = np.tanh(mix * 1.1) / np.tanh(1.1)
 mix *= 0.9 / np.abs(mix).max()
 mix *= np.clip((DUR - 2.5 - t) / 3.0, 0, 1)[:, None]
@@ -360,9 +361,8 @@ pcm = (mix * 32767).astype('<i2').tobytes()
 subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 's16le', '-ar', str(SR), '-ac', '2', '-i', '-', str(HERE / 'audio.wav')], input=pcm, check=True)
 
 m = active > 0
-vr = 20 * np.log10(np.sqrt(np.mean((voice[m] * 1.25) ** 2)))
-br = 20 * np.log10(np.sqrt(np.mean((mono(bed_m)[m] * 1.5 + sfx[m] * 0.7) ** 2)))
-print(f'voice {vr:.1f} dB / bed under voice {br:.1f} dB')
+db = lambda x: 20 * np.log10(np.sqrt(np.mean(x ** 2)) + 1e-12)
+print(f'voice {db(voice[m] * 1.55):.1f} / music under {db(mono(bed_m)[m] * 1.5):.1f} / sfx under {db(sfx_d[m]):.1f} dB')
 
 (HERE / 'timeline.js').write_text('window.TL = ' + json.dumps({'dur': DUR, 'sec': SEC, 'lines': lines, 'knocks': KNOCKS, 'hits': HITS, 'bells': BELLS, 'doorOpen': DOOR_OPEN}, ensure_ascii=False) + ';\n', encoding='utf-8')
 

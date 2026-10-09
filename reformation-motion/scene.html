@@ -476,8 +476,8 @@ function sConfession(t) { // 39.5–81.5
     // 라틴어 큰 글씨 키네틱 (쪽지 위로)
     if (move < 1 && t < nextK) {
       ctx.save(); ctx.globalAlpha = 1 - move;
-      glow(W / 2, 220, 500, 'rgba(214,165,58,.35)', 1);
-      kinetic(lat, W / 2, 230, 92, C.goldL, t, k0 + 0.05, { serif: true, stagger: 0.045, spacing: 0.14, bold: true });
+      glow(W / 2, 140, 500, 'rgba(214,165,58,.35)', 1);
+      kinetic(lat, W / 2, 165, 84, C.goldL, t, k0 + 0.05, { serif: true, stagger: 0.045, spacing: 0.14, bold: true });
       ctx.restore();
     }
     // 종이 조각
