@@ -18,3 +18,9 @@ sermon-luke17/stills/
 sermon-luke17/*.mp4
 sermon-luke17/audio.wav
 sermon-luke17/*.log
+seola-motion/src/
+seola-motion/clips/
+seola-motion/stills/
+seola-motion/voice/
+seola-motion/*.mp4
+seola-motion/audio.wav

@@ -1,0 +1,262 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="timeline.js"></script>
+<script>
+// 설아의 초록빛 하루 — 30초 유튜브 모션그래픽
+const W = 1920, H = 1080, FPS = 30, DUR = TL.dur;
+const ctx = document.getElementById('c').getContext('2d');
+const TAU = Math.PI * 2;
+const KR = '"WenQuanYi Zen Hei", "Noto Color Emoji", sans-serif';
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const back = x => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function rnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+// 설아의 분홍 옷 + 공원의 초록
+const C = { leaf: '#5cc46a', leafD: '#2f8f4a', mint: '#c9f2d6', pink: '#ff7eb6', pinkL: '#ffd6e8', sky: '#7cc8ff', yel: '#ffd34d', ink: '#24452f', white: '#ffffff' };
+const POP = ['#ff5fa2', '#ffb03b', '#4cc35d', '#3fa9f5', '#a66bff'];
+const scene = id => TL.scenes.find(s => s.id === id);
+const line = id => TL.lines.find(l => l.id === id);
+function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+const PH = {}; let vImg = null;
+
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function txt(s, x, y, size, color, align = 'center', stroke = null, sw = 0.16, weight = 0.05) {
+  ctx.font = `${size}px ${KR}`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  if (stroke) { ctx.lineWidth = size * sw; ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); }
+  if (weight) { ctx.lineWidth = size * weight; ctx.strokeStyle = color; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+function leaf(x, y, s, rot, color) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(0, -s); ctx.quadraticCurveTo(s * 0.75, -s * 0.2, 0, s); ctx.quadraticCurveTo(-s * 0.75, -s * 0.2, 0, -s); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = Math.max(1.5, s * 0.06); ctx.beginPath(); ctx.moveTo(0, -s * 0.85); ctx.lineTo(0, s * 0.85); ctx.stroke(); ctx.restore();
+}
+function heart(x, y, s, color) {
+  ctx.beginPath(); y -= s * 0.5; ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y, x - s * 0.5, y - s * 0.05, x - s * 0.5, y + s * 0.3); ctx.bezierCurveTo(x - s * 0.5, y + s * 0.6, x - s * 0.1, y + s * 0.8, x, y + s);
+  ctx.bezierCurveTo(x + s * 0.1, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3); ctx.bezierCurveTo(x + s * 0.5, y - s * 0.05, x, y, x, y + s * 0.3);
+  ctx.fillStyle = color; ctx.fill();
+}
+
+// ---------- 배경: 봄 공원 그라디언트 + 흩날리는 잎 ----------
+const BG = { intro: ['#dff7e6', '#fff3c4'], grand: ['#e6f6ff', '#e3f9e8'], teacher: ['#fff0f6', '#e6f6ff'], nature: ['#e3f9e8', '#fffbe0'], finale: ['#ffe8f3', '#e2f8e6'] };
+function background(t, id) {
+  const [a, b] = BG[id];
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, a); g.addColorStop(1, b); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 햇살 원
+  const sg = ctx.createRadialGradient(W * 0.82, 120, 20, W * 0.82, 120, 620); sg.addColorStop(0, 'rgba(255,248,200,.9)'); sg.addColorStop(1, 'rgba(255,248,200,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+  // 물방울 무늬
+  ctx.save(); ctx.globalAlpha = 0.22; ctx.fillStyle = '#fff';
+  for (let y = 0; y < H + 90; y += 90) for (let x = (y / 90) % 2 ? 45 : 0; x < W + 90; x += 90) { ctx.beginPath(); ctx.arc(x + (t * 14) % 90, y, 6, 0, TAU); ctx.fill(); }
+  ctx.restore();
+  // 바람에 날리는 잎
+  for (let i = 0; i < 22; i++) {
+    const sp = 0.05 + rnd(i) * 0.06, p = (t * sp + rnd(i + 7)) % 1;
+    const x = W + 80 - p * (W + 200) + Math.sin(t * 1.3 + i) * 40, y = rnd(i * 3) * H + Math.sin(t * 0.9 + i * 2) * 60;
+    ctx.save(); ctx.globalAlpha = 0.55; leaf(x, y, 16 + rnd(i + 2) * 22, t * (1 + rnd(i)) + i, i % 4 === 0 ? '#ffb3d1' : (i % 2 ? C.leaf : '#8ad86a')); ctx.restore();
+  }
+}
+
+// ---------- 폴라로이드 카드 ----------
+function card(img, cx, cy, w, h, rot, k, kb = 0, opts = {}) {
+  if (!img || k <= 0) return;
+  const s = opts.noPop ? clamp(k) : back(clamp(k));
+  ctx.save(); ctx.globalAlpha *= clamp(k * 2); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+  const pad = opts.pad ?? 20, bottom = opts.label ? 78 : (opts.bottom ?? 20);
+  ctx.shadowColor = 'rgba(30,80,40,.28)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18;
+  ctx.fillStyle = '#fff'; rrect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad + bottom, 18); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.save(); rrect(-w / 2, -h / 2, w, h, 10); ctx.clip();
+  const ir = img.width / img.height, cr = w / h; let dw = w, dh = h; if (ir > cr) dw = h * ir; else dh = w / ir;
+  const z = 1.04 + kb * 0.12;
+  const px = (opts.panX ?? 0) * (dw * z - w) * 0.5, py = (opts.panY ?? 0) * (dh * z - h) * 0.5;
+  ctx.drawImage(img, -dw * z / 2 + px, -dh * z / 2 + py, dw * z, dh * z);
+  ctx.restore();
+  ctx.save(); ctx.rotate(-0.06); ctx.fillStyle = opts.tape || 'rgba(255,190,220,.88)'; ctx.fillRect(-85, -h / 2 - pad - 18, 170, 40); ctx.restore();
+  if (opts.label) txt(opts.label, 0, h / 2 + 56, 40, C.ink, 'center', null, 0, 0.04);
+  ctx.restore();
+}
+const inout = (t, a, b, fi = 0.45, fo = 0.35) => Math.min(prog(t, a, a + fi), 1 - prog(t, b - fo, b));
+// 장면 시작 순간 화면이 '쿵' 하고 살짝 확대되는 펀치
+function punch(t) { let z = 1; for (const s of TL.scenes.slice(1)) { const d = t - s.t; if (d >= 0 && d < 0.4) z += 0.035 * Math.sin(d / 0.4 * Math.PI); } return z; }
+
+// ---------- 칩 / 자막 / 효과 ----------
+function chip(t, sc, emoji, label, color) {
+  const k = prog(t, sc.t + 0.3, sc.t + 0.75), out = prog(t, sc.e - 0.45, sc.e - 0.1);
+  if (k <= 0 || out >= 1) return;
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  ctx.font = `40px ${KR}`; const tw = ctx.measureText(label).width, w = tw + 120, x = 44, y = 30;
+  ctx.translate(x + w / 2, y + 37); ctx.scale(back(k), back(k)); ctx.rotate(-0.03 + Math.sin(t * 2.4) * 0.012); ctx.translate(-(x + w / 2), -(y + 37));
+  ctx.shadowColor = 'rgba(0,0,0,.15)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6; ctx.fillStyle = color; rrect(x, y, w, 74, 37); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  txt(emoji, x + 48, y + 52, 40, '#fff', 'center', null, 0, 0); txt(label, x + 88, y + 52, 40, '#fff', 'left', 'rgba(0,0,0,.12)', 0.08, 0.05);
+  ctx.restore();
+}
+function subtitles(t) {
+  const l = TL.lines.find(l => t >= l.t - 0.1 && t < l.e + 0.3); if (!l) return;
+  const a = Math.min(prog(t, l.t - 0.1, l.t + 0.12), 1 - prog(t, l.e + 0.12, l.e + 0.3));
+  const size = 50; ctx.font = `${size}px ${KR}`; const w = ctx.measureText(l.text).width + 90, h = 92, y0 = H - 54 - h;
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, y0 + h / 2); const s = 0.9 + 0.1 * back(prog(t, l.t - 0.1, l.t + 0.25)); ctx.scale(s, s); ctx.translate(-W / 2, -(y0 + h / 2));
+  ctx.fillStyle = 'rgba(36,69,47,.82)'; rrect(W / 2 - w / 2, y0, w, h, 46); ctx.fill();
+  txt(l.text, W / 2, y0 + 63, size, '#fff', 'center', null, 0, 0.035); ctx.restore();
+}
+function bounceTitle(t, t0, s, y, size, gap = 0.06) {
+  const chars = [...s]; ctx.font = `${size}px ${KR}`; const ws = chars.map(c => ctx.measureText(c).width), total = ws.reduce((a, b) => a + b, 0);
+  let x = W / 2 - total / 2;
+  chars.forEach((ch, i) => {
+    const k = prog(t, t0 + i * gap, t0 + 0.42 + i * gap);
+    if (k > 0 && ch !== ' ') {
+      const sc = back(k), bob = Math.sin(t * 5 + i) * 7 * prog(t, t0 + 0.8, t0 + 1.2);
+      ctx.save(); ctx.translate(x + ws[i] / 2, y + bob - (1 - sc) * 120); ctx.scale(sc, sc); ctx.rotate(Math.sin(i * 1.7) * 0.07);
+      txt(ch, 0, 0, size, POP[i % 5], 'center', '#fff', 0.2, 0.06); ctx.restore();
+    }
+    x += ws[i];
+  });
+}
+function confetti(t, t0, n = 120, seed = 0) {
+  const d = t - t0; if (d < 0 || d > 3) return;
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (rnd(i + seed) - 0.5) * 2.4, sp = 900 + rnd(i * 3 + seed) * 900;
+    const x = W / 2 + Math.cos(ang) * sp * d, y = H * 0.55 + Math.sin(ang) * sp * d + 900 * d * d;
+    ctx.save(); ctx.globalAlpha = 1 - d / 3; ctx.translate(x, y); ctx.rotate(d * (6 + rnd(i) * 8));
+    if (i % 3 === 0) leaf(0, 0, 18, 0, i % 2 ? C.leaf : '#8ad86a'); else if (i % 3 === 1) heart(0, 0, 22, POP[i % 5]); else { ctx.fillStyle = POP[i % 5]; ctx.fillRect(-9, -5, 18, 10); }
+    ctx.restore();
+  }
+}
+// 장면 전환: 커다란 잎 두 장이 화면을 쓸고 지나감
+function leafWipe(t) {
+  for (const s of TL.scenes.slice(1)) {
+    const d = t - s.t; if (d < -0.38 || d > 0.38) continue;
+    const k = (d + 0.38) / 0.76;
+    const x = lerp(W + 1300, -1300, eio(k));
+    ctx.save(); leaf(x, H / 2, 1250, Math.PI / 2 + 0.25, C.leaf); leaf(x + 380, H / 2 + 90, 900, Math.PI / 2 + 0.4, '#8ad86a'); ctx.restore();
+  }
+}
+function pill(t, t0, s, x, y, color) {
+  const k = prog(t, t0, t0 + 0.35); if (k <= 0) return;
+  ctx.save(); ctx.translate(x, y); const sc = back(k) * (1 + 0.03 * Math.sin(t * 6 + x)); ctx.scale(sc, sc); ctx.rotate(Math.sin(t * 2 + x) * 0.04);
+  ctx.font = `52px ${KR}`; const w = ctx.measureText(s).width + 70;
+  ctx.shadowColor = 'rgba(0,0,0,.15)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; ctx.fillStyle = color; rrect(-w / 2, -48, w, 96, 48); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  txt(s, 0, 18, 52, '#fff', 'center', null, 0, 0.05); ctx.restore();
+}
+function sparkles(t, x, y, r, k) {
+  for (let i = 0; i < 10; i++) {
+    const tw = Math.max(0, Math.sin(t * 4 + i * 1.7)); if (tw <= 0) continue;
+    const a = i / 10 * TAU + t * 0.3, sx = x + Math.cos(a) * r * (0.8 + rnd(i) * 0.4), sy = y + Math.sin(a) * r * 0.8;
+    ctx.save(); ctx.globalAlpha = k * tw; ctx.translate(sx, sy); ctx.fillStyle = '#fff6b0'; ctx.beginPath();
+    for (let q = 0; q < 8; q++) { const rr = q % 2 ? 6 : 22, aa = q / 8 * TAU; ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+}
+
+// ---------- 영상 프레임 ----------
+const VTOTAL = 830;
+async function vframe(sec) {
+  const idx = Math.min(VTOTAL, Math.max(1, Math.floor(sec * FPS) + 1));
+  const src = `clips/v/f${String(idx).padStart(4, '0')}.jpg`;
+  if (!vImg || vImg._src !== src) { const im = await loadImg(src); if (im) { im._src = src; vImg = im; } }
+  return vImg;
+}
+
+// ================= 장면 =================
+async function sIntro(t) {
+  const sc = scene('intro');
+  const im = await vframe(t + 1.0);
+  card(im, 1480, 520, 380, 676, 0.07 + Math.sin(t * 1.2) * 0.01, prog(t, 0.15, 0.6), 0, { tape: 'rgba(255,211,77,.9)' });
+  card(PH.p7, 430, 560, 380, 506, -0.08 + Math.sin(t) * 0.01, prog(t, 0.35, 0.8), prog(t, 0, 4.3), { tape: 'rgba(124,200,255,.85)' });
+  bounceTitle(t, 0.5, '설아의', 420, 110);
+  bounceTitle(t, 0.85, '초록빛 하루', 600, 170);
+  const k = prog(t, 1.8, 2.3);
+  if (k > 0) { ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = '#fff'; rrect(W / 2 - 230, 660, 460, 80, 40); ctx.fill(); txt('충신유치원 🌿', W / 2, 716, 44, C.leafD, 'center', null, 0, 0.04); ctx.restore(); }
+  confetti(t, 0.9, 120, 3);
+}
+function sGrand(t) {
+  const sc = scene('grand'), l = line('n02');
+  const x1 = lerp(-500, 640, eout(prog(t, sc.t + 0.15, sc.t + 0.75))), x2 = lerp(W + 500, 1290, eout(prog(t, sc.t + 0.5, sc.t + 1.1)));
+  const k1 = inout(t, sc.t + 0.1, sc.e), k2 = inout(t, sc.t + 0.45, sc.e);
+  card(PH.p6, x1, 455, 510, 680, -0.06 + Math.sin(t * 0.9) * 0.01, k1, prog(t, sc.t, sc.e), { panY: lerp(-0.2, 0.15, prog(t, sc.t, sc.e)), label: '할아버지와 함께', tape: 'rgba(124,200,255,.85)', noPop: true });
+  card(PH.p9, x2, 455, 510, 680, 0.05 + Math.sin(t * 0.8) * 0.01, k2, prog(t, sc.t, sc.e), { panY: 0.1, label: '할머니와 함께', tape: 'rgba(255,126,182,.85)', noPop: true });
+  // 손 잡은 하트가 두 카드 사이에 퐁퐁
+  for (let i = 0; i < 8; i++) {
+    const st = l.t + 0.8 + i * 0.3, d = t - st; if (d < 0 || d > 1.4) continue;
+    ctx.save(); ctx.globalAlpha = 1 - d / 1.4; heart(965 + Math.sin(i * 2.3) * 50 + d * (rnd(i) - 0.5) * 220, 520 - d * 300, 54 + rnd(i) * 26, POP[i % 5]); ctx.restore();
+  }
+  chip(t, sc, '👴', '할아버지 · 할머니와', '#3fa9f5');
+}
+function sTeacher(t) {
+  const sc = scene('teacher'), l = line('n03'), k = inout(t, sc.t + 0.1, sc.e);
+  const p = prog(t, sc.t, sc.e);
+  card(PH.p10, 820, 450, 960, 720, -0.025 + Math.sin(t * 0.8) * 0.006, k, p, { panX: lerp(0.15, -0.1, p), label: '송은영 원장 선생님과 함께', tape: 'rgba(255,211,77,.9)' });
+  // 오른쪽: 안전해요 / 재미있어요 배지
+  const badge = (t0, y, icon, s, color) => {
+    const kk = prog(t, t0, t0 + 0.4); if (kk <= 0) return;
+    ctx.save(); ctx.globalAlpha = 1 - prog(t, sc.e - 0.4, sc.e - 0.1); ctx.translate(1620, y); const sc2 = back(kk) * (1 + 0.025 * Math.sin(t * 5 + y)); ctx.scale(sc2, sc2);
+    ctx.shadowColor = 'rgba(0,0,0,.15)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8; ctx.fillStyle = '#fff'; rrect(-210, -80, 440, 160, 40); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(-120, 0, 52, 0, TAU); ctx.fill();
+    txt(icon, -120, 20, 54, '#fff', 'center', null, 0, 0); txt(s, -48, 20, 52, color, 'left', null, 0, 0.05);
+    ctx.restore();
+  };
+  badge(l.t + 2.3, 380, '🛡️', '안전해요', '#3fa9f5');
+  badge(l.t + 3.4, 600, '😄', '재미있어요', '#ff5fa2');
+  sparkles(t, 820, 430, 560, k * 0.8);
+  chip(t, sc, '🏫', '원장 선생님과', '#ffb03b');
+}
+async function sNature(t) {
+  const sc = scene('nature'), l = line('n04');
+  const mid = sc.t + 3.6;  // 풀잎 → 그림 전시
+  const kA = inout(t, sc.t + 0.1, mid + 0.35), kB = inout(t, mid, sc.e);
+  card(PH.p7, lerp(760, 260, eio(prog(t, mid - 0.3, mid + 0.4))), 470, 480, 640, -0.05, kA, prog(t, sc.t, mid + 0.4), { panY: 0.25, tape: 'rgba(198,232,107,.95)', label: '풀잎을 만져 보고' });
+  card(PH.p8, lerp(W + 400, 1150, eout(prog(t, mid, mid + 0.6))), 460, 820, 615, 0.04, kB, prog(t, mid, sc.e), { panX: -0.2, tape: 'rgba(255,126,182,.88)', label: '그림도 보면서', noPop: true });
+  // 돋보기로 들여다보는 느낌의 잎사귀
+  const kk = prog(t, sc.t + 0.8, sc.t + 1.3) * (1 - prog(t, mid - 0.2, mid + 0.2));
+  if (kk > 0) for (let i = 0; i < 5; i++) { ctx.save(); ctx.globalAlpha = kk; leaf(1200 + i * 120, 330 + Math.sin(t * 2 + i) * 30 + (i % 2) * 120, 50, Math.sin(t + i) * 0.5 + i, POP[i % 5] === '#ff5fa2' ? C.leaf : '#8ad86a'); ctx.restore(); }
+  const out = 1 - prog(t, sc.e - 0.45, sc.e - 0.1);
+  ctx.save(); ctx.globalAlpha = out;
+  pill(t, l.t + 3.4, '배우고 📚', 360, 300, '#4cc35d');
+  pill(t, l.t + 3.8, '느끼고 💚', 360, 470, '#3fa9f5');
+  pill(t, l.t + 4.2, '행복해요 ☀️', 360, 640, '#ffb03b');
+  ctx.restore();
+  chip(t, sc, '🌿', '자연에서 배워요', '#4cc35d');
+}
+async function sFinale(t) {
+  const sc = scene('finale'), l = line('n05');
+  const im = await vframe(8 + (t - sc.t) * 1.0);
+  const k = inout(t, sc.t + 0.05, sc.e + 1);
+  // 영상 카드 + 양옆 미니 사진
+  card(PH.p6, 330, 520, 300, 400, -0.1 + Math.sin(t) * 0.02, prog(t, sc.t + 0.5, sc.t + 0.9), 0, { pad: 12, bottom: 12, tape: 'rgba(124,200,255,.85)' });
+  card(PH.p10, 1600, 400, 380, 285, 0.09 + Math.sin(t * 1.1) * 0.02, prog(t, sc.t + 0.65, sc.t + 1.05), 0, { pad: 12, bottom: 12 });
+  card(PH.p8, 1580, 780, 360, 270, -0.06 + Math.sin(t * 0.9) * 0.02, prog(t, sc.t + 0.8, sc.t + 1.2), 0, { pad: 12, bottom: 12, tape: 'rgba(255,211,77,.9)' });
+  card(im, 960, 470, 450, 800, 0.0 + Math.sin(t * 1.4) * 0.012, k, 0, { tape: 'rgba(255,126,182,.9)' });
+  sparkles(t, 960, 470, 460, k);
+  // 끝 타이틀
+  const endK = prog(t, l.e + 0.2, l.e + 0.6);
+  if (endK > 0) {
+    ctx.save(); ctx.globalAlpha = endK * 0.88; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.restore();
+    bounceTitle(t, l.e + 0.3, '행복한 설아', 500, 190);
+    const k2 = prog(t, l.e + 1.0, l.e + 1.4);
+    if (k2 > 0) { ctx.save(); ctx.globalAlpha = k2; ctx.translate(W / 2, 640); ctx.scale(back(k2), back(k2)); ctx.fillStyle = C.leaf; rrect(-300, -55, 600, 110, 55); ctx.fill(); txt('충신유치원 🌿', 0, 20, 60, '#fff', 'center', null, 0, 0.05); ctx.restore(); }
+    confetti(t, l.e + 0.35, 150, 9);
+  }
+  chip(t, sc, '💚', '오늘도 쑥쑥', '#ff5fa2');
+}
+const RENDER = { intro: sIntro, grand: sGrand, teacher: sTeacher, nature: sNature, finale: sFinale };
+window.renderFrame = async function (t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  const sc = TL.scenes.find(s => t >= s.t && t < s.e) || TL.scenes[TL.scenes.length - 1];
+  background(t, sc.id);
+  const z = punch(t); ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+  await RENDER[sc.id](t); ctx.restore();
+  leafWipe(t);
+  if (!(sc.id === 'finale' && t > line('n05').e + 0.3)) subtitles(t);
+  const f = Math.max(prog(t, DUR - 0.6, DUR - 0.05), 1 - prog(t, 0, 0.3));
+  if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+};
+window.ready = (async () => {
+  await document.fonts.load(`48px ${KR}`);
+  for (const k of [6, 7, 8, 9, 10]) PH['p' + k] = await loadImg(`src/${k}.jpg`);
+})();
+</script></body></html>
