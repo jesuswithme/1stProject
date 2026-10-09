@@ -5,3 +5,10 @@ reformation-motion/render.log
 reformation-youtube/audio.wav
 reformation-youtube/*.log
 reformation-youtube/reformation_youtube_master.mp4
+# 아이들 얼굴이 담긴 원본·프레임·완성 영상은 저장소에 올리지 않음
+kids-love-party/src/
+kids-love-party/clips/
+kids-love-party/stills/
+kids-love-party/*.mp4
+kids-love-party/audio.wav
+kids-love-party/*.log

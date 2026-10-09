@@ -1,0 +1,385 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="timeline.js"></script>
+<script>
+// 충신교회 유치부 사랑나눔 파티 — 시나리오 모션그래픽 (YouTube)
+const W = 1920, H = 1080, FPS = 30, DUR = TL.dur;
+const ctx = document.getElementById('c').getContext('2d');
+const TAU = Math.PI * 2;
+const KR = '"WenQuanYi Zen Hei", "Noto Color Emoji", sans-serif';
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const ein = x => x * x * x;
+const back = x => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function rnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+// 현수막 색감: 분홍 · 연두 조끼 · 하늘 · 노랑
+const C = { pink: '#ff7eb6', pinkL: '#ffd6e8', lav: '#e9d8ff', sky: '#7cc8ff', lime: '#c6e86b', yel: '#ffd34d', ora: '#ff9f43', ink: '#3a2b4a', white: '#ffffff' };
+const RAINBOW = ['#ff5fa2', '#ff9f43', '#7bd64a', '#3fa9f5', '#a66bff'];
+
+const IMG = {};
+function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+const clipImg = {};
+
+function rrect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function circle(x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = fill; ctx.fill(); }
+function heartPath(x, y, s) {
+  ctx.beginPath(); ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y, x - s * 0.5, y - s * 0.05, x - s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x - s * 0.5, y + s * 0.6, x - s * 0.1, y + s * 0.8, x, y + s);
+  ctx.bezierCurveTo(x + s * 0.1, y + s * 0.8, x + s * 0.5, y + s * 0.6, x + s * 0.5, y + s * 0.3);
+  ctx.bezierCurveTo(x + s * 0.5, y - s * 0.05, x, y, x, y + s * 0.3); ctx.closePath();
+}
+function heart(x, y, s, color) { heartPath(x, y - s * 0.5, s); ctx.fillStyle = color; ctx.fill(); }
+function txt(s, x, y, size, color, align = 'center', stroke = null, sw = 0.16, weight = 0.05) {
+  ctx.font = `${size}px ${KR}`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  if (stroke) { ctx.lineWidth = size * sw; ctx.strokeStyle = stroke; ctx.strokeText(s, x, y); }
+  if (weight) { ctx.lineWidth = size * weight; ctx.strokeStyle = color; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+const scene = id => TL.scenes.find(s => s.id === id);
+const line = id => TL.lines.find(l => l.id === id);
+
+// ---------- 배경: 파스텔 그라디언트 + 떠다니는 하트/점 ----------
+const BG = { intro: ['#ffe3f0', '#e9dcff'], praise: ['#fff2c7', '#ffd9ec'], word: ['#e3f2ff', '#ffe3f0'], prayer: ['#fff4e0', '#f6e6ff'], class: ['#eaffd9', '#dff1ff'],
+  offering: ['#ffeccc', '#ffe0ef'], sharing: ['#ffe0ec', '#fff3cc'], choir: ['#ffe6f2', '#ddeaff'], recap: ['#f1e6ff', '#ffe6f0'], ending: ['#ffe0ef', '#fff6d6'] };
+function background(t, id) {
+  const [a, b] = BG[id];
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, a); g.addColorStop(1, b);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 물방울 무늬
+  ctx.save(); ctx.globalAlpha = 0.18;
+  for (let y = 0; y < H + 80; y += 90) for (let x = (y / 90) % 2 ? 45 : 0; x < W + 80; x += 90) circle(x + (t * 10) % 90, y, 6, '#ffffff');
+  ctx.restore();
+  for (let i = 0; i < 18; i++) {
+    const p = (t * (0.03 + rnd(i) * 0.04) + rnd(i + 7)) % 1;
+    const x = rnd(i * 3) * W + Math.sin(t * 0.8 + i) * 30, y = H + 60 - p * (H + 120);
+    ctx.save(); ctx.globalAlpha = 0.35; ctx.translate(x, y); ctx.rotate(Math.sin(t + i) * 0.3);
+    heart(0, 0, 26 + rnd(i + 2) * 34, RAINBOW[i % 5]); ctx.restore();
+  }
+}
+
+// ---------- 폴라로이드 카드 (사진/영상) ----------
+function card(img, cx, cy, w, h, rot, k, kb = 0, opts = {}) {
+  if (!img || k <= 0) return;
+  const s = back(clamp(k));
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(s, s);
+  const pad = opts.pad ?? 22, bottom = opts.bottom ?? 22;
+  ctx.shadowColor = 'rgba(80,40,90,.28)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18;
+  ctx.fillStyle = '#fff'; rrect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad + bottom, 18); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.save(); rrect(-w / 2, -h / 2, w, h, 10); ctx.clip();
+  // 켄 번스: 가득 채우고 천천히 확대/이동
+  const ir = img.width / img.height, cr = w / h;
+  let dw = w, dh = h; if (ir > cr) dw = h * ir; else dh = w / ir;
+  const z = 1.04 + kb * 0.1;
+  const px = (opts.panX ?? 0) * (dw * z - w) * 0.5, py = (opts.panY ?? 0) * (dh * z - h) * 0.5;
+  ctx.drawImage(img, -dw * z / 2 + px, -dh * z / 2 + py, dw * z, dh * z);
+  ctx.restore();
+  // 마스킹 테이프
+  if (opts.tape !== false) {
+    ctx.save(); ctx.rotate(-0.06); ctx.fillStyle = opts.tapeColor || 'rgba(255,190,220,.85)'; ctx.fillRect(-90, -h / 2 - pad - 18, 180, 40); ctx.restore();
+  }
+  if (opts.label) txt(opts.label, 0, h / 2 + bottom - 2, 30, C.ink, 'center', null, 0, 0.03);
+  ctx.restore();
+}
+function enterExit(t, a, b, fi = 0.55, fo = 0.4) { return Math.min(prog(t, a, a + fi), 1 - prog(t, b - fo, b)); }
+
+// ---------- 장면 칩 / 자막 / 효과 ----------
+function chip(t, sc, emoji, label, color) {
+  const k = prog(t, sc.t + 0.35, sc.t + 0.85), out = prog(t, sc.e - 0.5, sc.e - 0.15);
+  if (k <= 0 || out >= 1) return;
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  const s = back(k);
+  ctx.font = `38px ${KR}`; const tw = ctx.measureText(label).width;
+  const w = tw + 112, x = 40, y = 24;
+  ctx.translate(x + w / 2, y + 35); ctx.scale(s, s); ctx.rotate(-0.03 + Math.sin(t * 2) * 0.01); ctx.translate(-(x + w / 2), -(y + 35));
+  ctx.shadowColor = 'rgba(0,0,0,.15)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6;
+  ctx.fillStyle = color; rrect(x, y, w, 70, 35); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  txt(emoji, x + 46, y + 49, 38, '#fff', 'center', null, 0, 0);
+  txt(label, x + 84, y + 49, 38, '#fff', 'left', 'rgba(0,0,0,.12)', 0.08, 0.05);
+  ctx.restore();
+}
+function wrap(s, maxW, size) {
+  ctx.font = `${size}px ${KR}`;
+  if (ctx.measureText(s).width <= maxW) return [s];
+  const words = s.split(' '); let best = [s, ''], bestD = 1e9;
+  for (let i = 1; i < words.length; i++) { const a = words.slice(0, i).join(' '), b = words.slice(i).join(' '); const d = Math.abs(ctx.measureText(a).width - ctx.measureText(b).width); if (d < bestD) { bestD = d; best = [a, b]; } }
+  return best;
+}
+function subtitles(t) {
+  const l = TL.lines.find(l => t >= l.t - 0.1 && t < l.e + 0.35);
+  if (!l) return;
+  const a = Math.min(prog(t, l.t - 0.1, l.t + 0.12), 1 - prog(t, l.e + 0.15, l.e + 0.35));
+  const size = 48, lines = wrap(l.text, 1500, size);
+  ctx.font = `${size}px ${KR}`;
+  const w = Math.max(...lines.map(s => ctx.measureText(s).width)) + 80, h = lines.length * 66 + 34;
+  const y0 = H - 60 - h;
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(58,43,74,.78)'; rrect(W / 2 - w / 2, y0, w, h, 26); ctx.fill();
+  lines.forEach((s, i) => txt(s, W / 2, y0 + 66 + i * 66 - 8, size, '#fff', 'center', null, 0, 0.035));
+  ctx.restore();
+}
+function confetti(t, t0, n = 120, seed = 0) {
+  const d = t - t0; if (d < 0 || d > 3.2) return;
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (rnd(i + seed) - 0.5) * 2.4, sp = 900 + rnd(i * 3 + seed) * 900;
+    const x = W / 2 + Math.cos(ang) * sp * d, y = H * 0.55 + Math.sin(ang) * sp * d + 900 * d * d;
+    ctx.save(); ctx.globalAlpha = 1 - d / 3.2; ctx.translate(x, y); ctx.rotate(d * (6 + rnd(i) * 8));
+    ctx.fillStyle = RAINBOW[i % 5];
+    if (i % 3 === 0) heart(0, 0, 22, RAINBOW[(i + 2) % 5]); else ctx.fillRect(-9, -5, 18, 10);
+    ctx.restore();
+  }
+}
+function heartWipe(t) { // 장면 전환: 큰 하트가 화면을 덮었다가 걷힘
+  for (const s of TL.scenes.slice(1)) {
+    const d = t - s.t; if (d < -0.35 || d > 0.35) continue;
+    const k = 1 - Math.abs(d) / 0.35;
+    const size = eio(k) * 3200;
+    ctx.save(); heart(W / 2, H / 2 + size * 0.05, size, '#ff8ec4'); ctx.restore();
+    ctx.save(); ctx.globalAlpha = 0.8 * k; heart(W / 2, H / 2 + size * 0.05, size * 0.72, '#ffc2de'); ctx.restore();
+  }
+}
+function notes(t, k, seed = 0) { // 떠오르는 음표
+  if (k <= 0) return;
+  for (let i = 0; i < 14; i++) {
+    const p = (t * 0.18 + rnd(i + seed)) % 1;
+    const x = (i % 2 ? 120 : W - 120) + Math.sin(t * 2 + i) * 50 + (rnd(i * 5) - 0.5) * 120, y = H - 60 - p * (H - 100);
+    ctx.save(); ctx.globalAlpha = k * Math.sin(p * Math.PI) * 0.9;
+    txt(['♪', '♫', '♬'][i % 3], x, y, 56 + rnd(i) * 30, RAINBOW[i % 5], 'center', '#fff', 0.12, 0.04); ctx.restore();
+  }
+}
+function sparkles(t, x, y, r, k) {
+  for (let i = 0; i < 10; i++) {
+    const tw = Math.max(0, Math.sin(t * 4 + i * 1.7)); if (tw <= 0) continue;
+    const a = i / 10 * TAU + t * 0.2, sx = x + Math.cos(a) * r * (0.8 + rnd(i) * 0.4), sy = y + Math.sin(a) * r * 0.8;
+    ctx.save(); ctx.globalAlpha = k * tw; ctx.translate(sx, sy); ctx.fillStyle = '#fff6b0'; ctx.beginPath();
+    for (let q = 0; q < 8; q++) { const rr = q % 2 ? 6 : 22; const aa = q / 8 * TAU; ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+}
+function emojiFly(t, t0, items, from, to, dur = 1.0, gap = 0.25) {
+  items.forEach((e, i) => {
+    const st = t0 + i * gap, k = prog(t, st, st + dur); if (k <= 0 || k >= 1) return;
+    const x = lerp(from[0] + (i % 3 - 1) * 80, to[0], eio(k)), y = lerp(from[1], to[1], eio(k)) - Math.sin(k * Math.PI) * 220;
+    ctx.save(); ctx.globalAlpha = 1 - prog(k, 0.85, 1); ctx.translate(x, y); ctx.rotate(k * 4); txt(e, 0, 20, 70, '#000', 'center', null, 0, 0); ctx.restore();
+  });
+}
+
+// ================= 장면 =================
+async function clipFrame(cid, t) {
+  const c = TL.clips.find(c => c.id === cid);
+  const total = { a: 450, b: 375, c: 720 }[cid];
+  const idx = Math.min(total, Math.max(1, Math.floor((t - c.t) * FPS) + 1));
+  const src = `${c.dir}/${String(idx).padStart(4, '0')}.jpg`;
+  if (!clipImg[cid] || clipImg[cid]._src !== src) { const im = await loadImg(src); if (im) { im._src = src; clipImg[cid] = im; } }
+  return clipImg[cid];
+}
+const PH = {};
+function sIntro(t) {
+  const sc = scene('intro');
+  // 사진 콜라주가 날아 들어옴
+  const spots = [['p1', 380, 300, -0.12], ['p3', 1540, 280, 0.1], ['p4', 400, 800, 0.08], ['p5', 1520, 800, -0.09], ['p2', 960, 230, 0.02]];
+  spots.forEach(([k, x, y, r], i) => {
+    const st = 0.2 + i * 0.22, kk = prog(t, st, st + 0.6) * (1 - prog(t, 5.6, 6.0));
+    const im = PH[k], portrait = im && im.height > im.width;
+    const w = portrait ? 240 : 420, h = portrait ? 360 : 280;
+    card(im, x + Math.sin(t + i) * 8, y + Math.cos(t * 0.9 + i) * 8, w, h, r + Math.sin(t * 0.7 + i) * 0.02, kk, prog(t, 0, 9), { tape: true });
+  });
+  // 충신교회 유치부
+  const a1 = prog(t, 1.0, 1.6) * (1 - prog(t, 5.5, 5.9));
+  if (a1 > 0) {
+    ctx.save(); ctx.globalAlpha = a1; const s = back(prog(t, 1.0, 1.6)); ctx.translate(W / 2, 560); ctx.scale(s, s);
+    ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.12)'; ctx.shadowBlur = 24; rrect(-330, -70, 660, 120, 60); ctx.fill(); ctx.shadowBlur = 0;
+    txt('충신교회 유치부', 0, 15, 72, C.pink, 'center', null, 0, 0.06); ctx.restore();
+  }
+  // 사랑나눔 파티! (글자가 통통 튀며 등장)
+  if (t > 5.75) {
+    const title = '사랑나눔 파티!', chars = [...title];
+    ctx.font = `190px ${KR}`; const ws = chars.map(c => ctx.measureText(c).width), total = ws.reduce((a, b) => a + b, 0);
+    let x = W / 2 - total / 2;
+    glowHeart(t, 5.9);
+    chars.forEach((ch, i) => {
+      const k = prog(t, 5.8 + i * 0.06, 6.25 + i * 0.06);
+      if (k > 0 && ch !== ' ') {
+        const s = back(k), bob = Math.sin(t * 5 + i) * 8 * prog(t, 6.6, 7);
+        ctx.save(); ctx.translate(x + ws[i] / 2, 600 + bob - (1 - s) * 120); ctx.scale(s, s); ctx.rotate(Math.sin(i * 1.7) * 0.06);
+        txt(ch, 0, 0, 190, RAINBOW[i % 5], 'center', '#fff', 0.2, 0.06); ctx.restore();
+      }
+      x += ws[i];
+    });
+  }
+  confetti(t, 5.9, 140, 1);
+}
+function glowHeart(t, t0) {
+  const k = eout(prog(t, t0, t0 + 0.6));
+  ctx.save(); ctx.globalAlpha = 0.5 * k; ctx.translate(W / 2, 540); ctx.rotate(Math.sin(t) * 0.04); heart(0, 0, 900 * k * (1 + 0.03 * Math.sin(t * 4)), '#ffffff'); ctx.restore();
+}
+async function sPraise(t) {
+  const sc = scene('praise'), k = enterExit(t, sc.t + 0.25, sc.e);
+  const im = await clipFrame('a', t);
+  notes(t, k, 3);
+  card(im, W / 2, 520, 1240, 698, -0.025 + Math.sin(t * 0.5) * 0.008, k, prog(t, sc.t, sc.e), { tapeColor: 'rgba(255,214,77,.85)' });
+  chip(t, sc, '🎵', '찬양으로 문을 열어요', '#ff9f43');
+}
+function sWord(t) {
+  const sc = scene('word'), k = enterExit(t, sc.t + 0.25, sc.e);
+  card(PH.p3, 980, 520, 1080, 720, 0.02, k, prog(t, sc.t, sc.e), { panX: lerp(-0.5, 0.3, prog(t, sc.t, sc.e)), tapeColor: 'rgba(124,200,255,.85)' });
+  // "얼마나 사랑하시는지" — 십자가에서 하트가 퐁퐁
+  const l6 = line('n06');
+  for (let i = 0; i < 12; i++) {
+    const st = l6.t + 0.6 + i * 0.22, d = t - st; if (d < 0 || d > 1.6) continue;
+    const x = 1250 + Math.sin(i * 2.1) * 60 + d * (rnd(i) - 0.5) * 300, y = 360 - d * 260;
+    ctx.save(); ctx.globalAlpha = 1 - d / 1.6; heart(x, y, 50 + rnd(i) * 30, RAINBOW[i % 5]); ctx.restore();
+  }
+  chip(t, sc, '📖', '말씀 시간', '#3fa9f5');
+}
+function sPrayer(t) {
+  const sc = scene('prayer'), k = enterExit(t, sc.t + 0.25, sc.e);
+  const g = ctx.createRadialGradient(960, 420, 50, 960, 420, 700); g.addColorStop(0, 'rgba(255,248,210,.9)'); g.addColorStop(1, 'rgba(255,248,210,0)');
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+  card(PH.p2, 960, 470, 560, 840, -0.015, k, prog(t, sc.t, sc.e) * 1.5, { panY: lerp(0.3, -0.1, prog(t, sc.t, sc.e)), tapeColor: 'rgba(198,232,107,.9)' });
+  sparkles(t, 960, 420, 470, k);
+  chip(t, sc, '🙏', '두 손 모아 기도', '#a66bff');
+}
+function sClass(t) {
+  const sc = scene('class');
+  const k1 = enterExit(t, sc.t + 0.25, sc.e), k2 = enterExit(t, sc.t + 0.7, sc.e);
+  const focus = prog(t, sc.t + 4.5, sc.t + 5.3);
+  const x1 = lerp(-400, 560, eout(prog(t, sc.t + 0.2, sc.t + 0.9))), x2 = lerp(W + 400, 1360, eout(prog(t, sc.t + 0.6, sc.t + 1.3)));
+  ctx.save(); const s1 = lerp(1.05, 0.95, focus); ctx.translate(x1, 490); ctx.scale(s1, s1); card(PH.p1, 0, 0, 780, 520, -0.06, k1, prog(t, sc.t, sc.e), { tapeColor: 'rgba(255,126,182,.85)' }); ctx.restore();
+  ctx.save(); const s2 = lerp(0.95, 1.05, focus); ctx.translate(x2, 470); ctx.scale(s2, s2); card(PH.p5, 0, 0, 780, 520, 0.05, k2, prog(t, sc.t, sc.e), { tapeColor: 'rgba(124,200,255,.85)' }); ctx.restore();
+  // 카드가 뒤집히는 작은 아이콘
+  for (let i = 0; i < 4; i++) {
+    const p = prog(t, sc.t + 1.5 + i * 0.6, sc.t + 2.1 + i * 0.6); if (p <= 0) continue;
+    const fl = Math.cos(p * Math.PI * 2);
+    ctx.save(); ctx.globalAlpha = enterExit(t, sc.t + 1.5, sc.e) * 0.95; ctx.translate(760 + i * 130, 905 - Math.sin(p * Math.PI) * 30); ctx.scale(Math.abs(fl), 1);
+    ctx.fillStyle = fl > 0 ? '#ffffff' : RAINBOW[i]; rrect(-36, -50, 72, 100, 10); ctx.fill(); ctx.strokeStyle = RAINBOW[i]; ctx.lineWidth = 5; ctx.stroke();
+    if (fl > 0) heart(0, 0, 34, RAINBOW[i]);
+    ctx.restore();
+  }
+  chip(t, sc, '🃏', '반별 활동', '#7bd64a');
+}
+async function sOffering(t) {
+  const sc = scene('offering'), k = enterExit(t, sc.t + 0.25, sc.e);
+  const im = await clipFrame('b', t);
+  card(im, W / 2, 500, 1280, 720, 0.02 + Math.sin(t * 0.5) * 0.006, k, prog(t, sc.t, sc.e), { tapeColor: 'rgba(255,159,67,.85)' });
+  // 정성을 담은 하트가 떨어짐
+  for (let i = 0; i < 10; i++) {
+    const p = (t * 0.35 + rnd(i * 9)) % 1;
+    ctx.save(); ctx.globalAlpha = k * Math.sin(p * Math.PI) * 0.8; heart(i % 2 ? 140 + rnd(i) * 80 : W - 140 - rnd(i) * 80, -40 + p * (H + 80), 44, RAINBOW[i % 5]); ctx.restore();
+  }
+  chip(t, sc, '🎁', '정성 담은 헌금', '#ff5fa2');
+}
+function sSharing(t) {
+  const sc = scene('sharing'), k = enterExit(t, sc.t + 0.25, sc.e);
+  card(PH.p4, 820, 490, 1080, 720, -0.03, k, prog(t, sc.t, sc.e), { panX: lerp(0.2, -0.3, prog(t, sc.t, sc.e)), panY: 0.4, tapeColor: 'rgba(255,211,77,.9)' });
+  // 오른쪽: 사랑의 선물 상자로 간식이 쏙쏙
+  const bx = 1600, by = 560, bk = back(prog(t, sc.t + 0.8, sc.t + 1.3));
+  if (bk > 0) {
+    ctx.save(); ctx.translate(bx, by); ctx.scale(bk * (1 + 0.04 * Math.sin(t * 6)), bk);
+    ctx.fillStyle = '#ff7eb6'; rrect(-150, -60, 300, 220, 24); ctx.fill();
+    ctx.fillStyle = '#ffd34d'; ctx.fillRect(-18, -60, 36, 220); ctx.fillRect(-150, 30, 300, 30);
+    ctx.fillStyle = '#ff5fa2'; rrect(-170, -100, 340, 60, 18); ctx.fill(); ctx.fillStyle = '#ffd34d'; ctx.fillRect(-18, -100, 36, 60);
+    heart(-40, -130, 70, '#ffd34d'); heart(40, -130, 70, '#ffd34d');
+    ctx.restore();
+  }
+  const l10 = line('n10');
+  emojiFly(t, l10.t + 0.3, ['🍪', '🍬', '🧃', '🍫', '🥨', '🍭'], [1100, 700], [bx, by - 20], 0.9, 0.3);
+  // "이웃과 나누는 것" — 상자에서 하트가 할머니·할아버지께로
+  const l11 = line('n11');
+  const gk = back(prog(t, l11.t + 0.2, l11.t + 0.7));
+  if (gk > 0) { ctx.save(); ctx.translate(1600, 210); ctx.scale(gk, gk); ctx.fillStyle = '#fff'; rrect(-150, -70, 300, 140, 70); ctx.fill(); txt('👵👴', 0, 30, 90, '#000', 'center', null, 0, 0); ctx.restore(); }
+  for (let i = 0; i < 6; i++) {
+    const st = l11.t + 0.8 + i * 0.45, p = prog(t, st, st + 1.2); if (p <= 0 || p >= 1) continue;
+    ctx.save(); ctx.globalAlpha = 1 - prog(p, 0.8, 1); heart(bx + Math.sin(p * 8 + i) * 40, lerp(by - 120, 280, eio(p)), 50, RAINBOW[i % 5]); ctx.restore();
+  }
+  chip(t, sc, '💝', '사랑나눔', '#ff7eb6');
+}
+async function sChoir(t) {
+  const sc = scene('choir'), k = enterExit(t, sc.t + 0.25, sc.e);
+  // 무대 조명
+  ctx.save(); ctx.globalAlpha = 0.5 * k;
+  for (let i = 0; i < 6; i++) {
+    const x = 200 + i * 300, sw = Math.sin(t * 0.8 + i) * 120;
+    const g = ctx.createLinearGradient(x, 0, x + sw, H); g.addColorStop(0, RAINBOW[i % 5] + 'aa'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 30, -20); ctx.lineTo(x + 30, -20); ctx.lineTo(x + sw + 220, H); ctx.lineTo(x + sw - 220, H); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  const im = await clipFrame('c', t);
+  notes(t, k, 11);
+  card(im, W / 2, 500, 1344, 756, 0, k, prog(t, sc.t, sc.e) * 0.6, { pad: 18, bottom: 18, tapeColor: 'rgba(255,126,182,.9)' });
+  // 찬양 제목 캡션 (화면 속 가사판의 첫 줄)
+  const ca = prog(t, 83.0, 83.6) * (1 - prog(t, 101.0, 101.6));
+  if (ca > 0) {
+    ctx.save(); ctx.globalAlpha = ca; ctx.fillStyle = 'rgba(255,255,255,.92)'; rrect(W / 2 - 430, 935, 860, 84, 42); ctx.fill();
+    txt('♪ 하나님의 말씀은 능력이 있어요', W / 2, 993, 44, '#ff5fa2', 'center', null, 0, 0.04); ctx.restore();
+  }
+  confetti(t, sc.t + 0.3, 110, 7);
+  chip(t, sc, '🎤', '어린이 찬양', '#3fa9f5');
+}
+const RECAP = [['p1', -0.08], ['ca', 0.06], ['p3', -0.04], ['p2', 0.07], ['p5', -0.06], ['cb', 0.05], ['p4', -0.07], ['cc', 0.04]];
+function sRecap(t) {
+  const sc = scene('recap');
+  const z = 1 + prog(t, sc.t, sc.e) * 0.06;
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+  RECAP.forEach(([k, r], i) => {
+    const col = i % 4, row = Math.floor(i / 4);
+    const x = 300 + col * 440, y = 330 + row * 380;
+    const st = sc.t + 0.3 + i * 0.18;
+    const kk = enterExit(t, st, sc.e, 0.5, 0.45);
+    const im = PH[k], portrait = im && im.height > im.width;
+    card(im, x, y, portrait ? 210 : 360, portrait ? 300 : 240, r + Math.sin(t + i) * 0.02, kk, prog(t, sc.t, sc.e), { pad: 14, bottom: 14, tape: i % 2 === 0 });
+  });
+  ctx.restore();
+  // 가운데 하트
+  const hk = back(prog(t, line('n13').t + 0.4, line('n13').t + 1.0)) * (1 - prog(t, sc.e - 0.5, sc.e));
+  if (hk > 0) { ctx.save(); ctx.translate(W / 2, 520); ctx.scale(hk * (1 + 0.05 * Math.sin(t * 5)), hk * (1 + 0.05 * Math.sin(t * 5))); heart(0, 0, 240, '#ff5fa2'); txt('💕', 0, 30, 90, '#000', 'center', null, 0, 0); ctx.restore(); }
+}
+function sEnding(t) {
+  const sc = scene('ending');
+  const hk = back(prog(t, sc.t + 0.2, sc.t + 0.9));
+  ctx.save(); ctx.translate(W / 2, 470); ctx.scale(hk * (1 + 0.025 * Math.sin(t * 3)), hk * (1 + 0.025 * Math.sin(t * 3))); ctx.rotate(Math.sin(t) * 0.02);
+  ctx.shadowColor = 'rgba(255,95,162,.4)'; ctx.shadowBlur = 60; heart(0, 0, 900, '#ffffff'); ctx.shadowBlur = 0;
+  heart(0, 0, 840, '#ffe6f1');
+  ctx.restore();
+  const a = prog(t, sc.t + 0.6, sc.t + 1.1);
+  if (a > 0) {
+    ctx.save(); ctx.globalAlpha = a;
+    txt('충신교회 유치부', W / 2, 330, 60, C.pink, 'center', '#fff', 0.15, 0.05);
+    const title = '사랑나눔 파티', chars = [...title];
+    ctx.font = `150px ${KR}`; const ws = chars.map(c => ctx.measureText(c).width), total = ws.reduce((x, y) => x + y, 0);
+    let x = W / 2 - total / 2;
+    chars.forEach((ch, i) => { const k = prog(t, sc.t + 0.8 + i * 0.07, sc.t + 1.2 + i * 0.07); if (k > 0 && ch !== ' ') { ctx.save(); ctx.translate(x + ws[i] / 2, 520 + Math.sin(t * 4 + i) * 6); const s = back(k); ctx.scale(s, s); txt(ch, 0, 0, 150, RAINBOW[i % 5], 'center', '#fff', 0.2, 0.06); ctx.restore(); } x += ws[i]; });
+    const b = prog(t, sc.t + 2.0, sc.t + 2.6);
+    ctx.globalAlpha = a * b;
+    txt('하나님의 사랑을 나누는 아이들', W / 2, 650, 50, C.ink, 'center', null, 0, 0.04);
+    ctx.restore();
+  }
+  confetti(t, sc.t + 0.9, 150, 21);
+  sparkles(t, W / 2, 470, 520, a);
+}
+
+const RENDER = { intro: sIntro, praise: sPraise, word: sWord, prayer: sPrayer, class: sClass, offering: sOffering, sharing: sSharing, choir: sChoir, recap: sRecap, ending: sEnding };
+window.renderFrame = async function (t) {
+  ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  const sc = TL.scenes.find(s => t >= s.t && t < s.e) || TL.scenes[TL.scenes.length - 1];
+  background(t, sc.id);
+  await RENDER[sc.id](t);
+  heartWipe(t);
+  subtitles(t);
+  const f = Math.max(prog(t, DUR - 1.4, DUR - 0.2), 1 - prog(t, 0, 0.5));
+  if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+};
+window.ready = (async () => {
+  await document.fonts.load(`48px ${KR}`);
+  for (const k of [1, 2, 3, 4, 5]) PH['p' + k] = await loadImg(`src/${k}.jpg`);
+  PH.ca = await loadImg('clips/a/0200.jpg'); PH.cb = await loadImg('clips/b/0300.jpg'); PH.cc = await loadImg('clips/c/0300.jpg');
+})();
+</script></body></html>
