@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<style>
+:root{--cream:#fbf3e4;--cream2:#f3e2c4;--orange:#f08a3c;--orange2:#ffb35c;--green:#5f9e4a;--brown:#5a3a1e;--ink:#3b2a1c}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--cream);font-family:"WenQuanYi Zen Hei",sans-serif;color:var(--ink)}
+#root{position:absolute;inset:0;overflow:hidden}
+.abs{position:absolute;left:0;top:0}
+#bgblur{position:absolute;left:-10%;top:-10%;width:120%;height:120%;background:url(assets/food.jpg) center/cover;filter:blur(38px) saturate(1.2);opacity:.28}
+#bgwash{position:absolute;inset:0;background:radial-gradient(1200px 800px at 18% 12%,rgba(255,236,190,.95),rgba(251,243,228,.75) 45%,rgba(243,226,196,.85))}
+#rays{position:absolute;left:50%;top:-30%;width:2600px;height:2600px;margin-left:-1300px;background:repeating-conic-gradient(from 0deg,rgba(255,214,140,.22) 0deg 6deg,rgba(255,255,255,0) 6deg 18deg);border-radius:50%;opacity:0;-webkit-mask:radial-gradient(circle,#000 0,#000 30%,transparent 62%)}
+#sun{position:absolute;left:-180px;top:-220px;width:760px;height:760px;border-radius:50%;background:radial-gradient(circle,rgba(255,230,160,.95),rgba(255,210,120,.35) 40%,rgba(255,200,120,0) 70%)}
+.bokeh{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.85),rgba(255,230,180,.25) 60%,rgba(255,230,180,0) 72%)}
+.leaf{position:absolute;width:46px;height:22px;border-radius:0 100% 0 100%;background:linear-gradient(135deg,#8cc265,#4d8a39)}
+#card{position:absolute;overflow:hidden;background:#fff;box-shadow:0 30px 60px rgba(90,58,30,.28),0 6px 16px rgba(90,58,30,.18)}
+#card img{position:absolute;left:0;top:0;transform-origin:0 0}
+#cardshine{position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,0) 35%,rgba(255,255,255,.45) 50%,rgba(255,255,255,0) 65%);pointer-events:none}
+#av{position:absolute;left:0;top:0;width:530px;height:1221px;transform-origin:50% 100%}
+#av img{position:absolute;left:0;top:0;width:530px;height:1221px}
+#avshadow{position:absolute;width:520px;height:90px;border-radius:50%;background:radial-gradient(closest-side,rgba(90,58,30,.35),rgba(90,58,30,0));}
+#torso,#head{position:absolute;left:0;top:0;width:530px;height:1221px}
+#torso{transform-origin:265px 843px}
+#head{transform-origin:265px 600px}
+#mouth{position:absolute;left:0;top:0;width:530px;height:1221px;overflow:visible}
+.kt{position:absolute;white-space:nowrap;word-break:keep-all;line-height:1.18}
+.kt .ch{display:inline-block;will-change:transform}
+.h1{font-size:78px;color:var(--brown);-webkit-text-stroke:2px var(--brown);letter-spacing:-1px;text-shadow:0 4px 18px rgba(255,255,255,.7)}
+.h2{font-size:64px;color:var(--brown);-webkit-text-stroke:1.6px var(--brown);text-shadow:0 4px 18px rgba(255,255,255,.7)}
+.em{color:var(--orange);-webkit-text-stroke-color:var(--orange)}
+.emg{color:#4f8f3a;-webkit-text-stroke-color:#4f8f3a}
+.kick{font-size:26px;letter-spacing:8px;color:#b9773a;font-family:"Inter","WenQuanYi Zen Hei";font-weight:600}
+.panel{position:absolute;background:rgba(255,250,240,.82);border-radius:28px;box-shadow:0 18px 40px rgba(90,58,30,.18);border:2px solid rgba(240,180,110,.45)}
+#sub{position:absolute;left:50%;top:978px;transform:translateX(-50%);padding:14px 36px;border-radius:18px;background:rgba(62,38,20,.78);color:#fff;font-size:40px;white-space:nowrap;word-break:keep-all;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+#sub .w{color:var(--orange2);-webkit-text-stroke:.8px var(--orange2)}
+#verse{position:absolute;left:50%;top:96px;width:1260px;margin-left:-630px;height:370px;border-radius:34px;background:linear-gradient(180deg,rgba(255,252,244,.96),rgba(255,244,222,.94));box-shadow:0 24px 60px rgba(120,80,30,.22);border:3px solid rgba(214,166,90,.55)}
+#verse .inner{position:absolute;inset:16px;border-radius:24px;border:1.5px solid rgba(214,166,90,.5)}
+#vlabel{position:absolute;left:0;right:0;top:46px;text-align:center;font-size:24px;letter-spacing:10px;color:#b98a46;font-family:"Inter","WenQuanYi Zen Hei";font-weight:600}
+#vtext{position:absolute;left:0;right:0;top:112px;text-align:center;font-size:72px;color:#6b4417;-webkit-text-stroke:1.4px #6b4417;white-space:nowrap;letter-spacing:4px}
+#vtext .ch{display:inline-block}
+#vref{position:absolute;left:0;right:0;top:262px;text-align:center;font-size:32px;color:#9a6a32;letter-spacing:3px}
+#vline1,#vline2{position:absolute;top:283px;height:2px;width:150px;background:linear-gradient(90deg,rgba(214,166,90,0),rgba(214,166,90,.9))}
+#vline1{left:290px}#vline2{right:290px}
+#ribbon{position:absolute;left:50%;top:968px;transform:translateX(-50%);padding:18px 46px;border-radius:999px;background:linear-gradient(90deg,#f39a4a,#f07a3a);color:#fff;font-size:40px;white-space:nowrap;-webkit-text-stroke:.6px #fff;box-shadow:0 12px 30px rgba(240,122,58,.35)}
+.heart{position:absolute;width:40px;height:40px}
+#flash{position:absolute;inset:0;background:#fff8ea;opacity:0;pointer-events:none}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 60%,rgba(90,58,30,.22))}
+#fade{position:absolute;inset:0;background:#fbf3e4;opacity:0}
+</style></head><body><div id="root">
+<div id="bgblur"></div><div id="bgwash"></div><div id="rays"></div><div id="sun"></div>
+<div id="bok"></div><div id="leaves"></div>
+<div id="card"><img id="cimg" src="assets/food.jpg"><div id="cardshine"></div></div>
+<div id="avshadow"></div>
+<div id="av">
+ <img src="assets/av_lower.png">
+ <div id="torso"><img src="assets/av_torso.png">
+  <div id="head"><img src="assets/av_head.png">
+   <svg id="mouth" viewBox="0 0 530 1221"><path id="mpath" fill="#5b2420"/></svg>
+   <img id="jaw" src="assets/av_jaw.png">
+  </div>
+ </div>
+</div>
+<div id="hearts"></div>
+<!-- 장면 텍스트 -->
+<div id="p1" class="panel"></div>
+<div id="t1k" class="kt kick">WITH GRATITUDE</div>
+<div id="t1a" class="kt h1">오늘 아침도</div>
+<div id="t1b" class="kt h1"><span class="em">사랑</span>이 가득합니다.</div>
+<div id="p2" class="panel"></div>
+<div id="t2a" class="kt h2"><span class="em">정성</span>으로 차려주신</div>
+<div id="t2b" class="kt h2">따뜻한 한 끼</div>
+<div id="t3a" class="kt h2">성도님들의</div>
+<div id="t3b" class="kt h2"><span class="em">사랑</span>과 <span class="emg">섬김</span>에</div>
+<div id="t3c" class="kt h2"><span class="em">감사</span>드립니다.</div>
+<div id="t4a" class="kt h2">덕분에 오늘도</div>
+<div id="t4b" class="kt h1">든든하고</div>
+<div id="t4c" class="kt h1"><span class="em">행복합니다.</span></div>
+<div id="t5a" class="kt h1">성도님들,</div>
+<div id="t5b" class="kt h1">진심으로</div>
+<div id="t5c" class="kt h1"><span class="em">감사합니다!</span></div>
+<div id="verse"><div class="inner"></div><div id="vlabel">WORD OF GOD</div><div id="vtext"></div><div id="vline1"></div><div id="vline2"></div><div id="vref">베드로전서 4:9 (개역개정)</div></div>
+<div id="sub"></div>
+<div id="ribbon">성도님들의 따뜻한 <b style="color:#fff3c9">사랑</b>과 <b style="color:#fff3c9">섬김</b>에 진심으로 <b style="color:#fff3c9">감사</b>드립니다.</div>
+<div id="flash"></div><div id="vig"></div><div id="fade"></div>
+</div>
+<script>
+const TL=__TL__;
+const SC=TL.scenes, TOTAL=TL.total, AMP=TL.amp;
+window.TOTAL=TOTAL;
+const $=id=>document.getElementById(id);
+const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const P=(t,a,b)=>cl((t-a)/(b-a));
+const eo=x=>1-Math.pow(1-x,3), eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const eback=x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+const lerp=(a,b,x)=>a+(b-a)*x;
+const win=(t,a,b,fi=.4,fo=.4)=>Math.min(P(t,a,a+fi),1-P(t,b-fo,b));
+const S=id=>SC.find(s=>s.id===id);
+
+/* 문자 단위 키네틱 타이포 준비 */
+function splitChars(el){
+  const walk=(node)=>{[...node.childNodes].forEach(n=>{
+    if(n.nodeType===3){const f=document.createDocumentFragment();
+      [...n.textContent].forEach(c=>{const s=document.createElement('span');s.className='ch';s.textContent=c===' '?' ':c;f.appendChild(s)});
+      n.replaceWith(f)} else walk(n)})};
+  walk(el); return [...el.querySelectorAll('.ch')];
+}
+const KT={};
+document.querySelectorAll('.kt').forEach(el=>KT[el.id]=splitChars(el));
+function kt(id,x,y,t,t0,t1,opt={}){
+  const el=$(id),chs=KT[id],st=opt.st||0.035,dur=opt.dur||0.5,align=opt.align||'left';
+  const vis=t>=t0-0.01&&t<t1;
+  el.style.display=vis?'block':'none'; if(!vis)return;
+  const out=P(t,t1-0.35,t1);
+  el.style.left=x+'px';el.style.top=y+'px';
+  el.style.transform=(align==='center'?'translateX(-50%) ':align==='right'?'translateX(-100%) ':'')+`translateY(${-out*20}px)`;
+  el.style.opacity=1-out;
+  chs.forEach((c,i)=>{const p=P(t,t0+i*st,t0+i*st+dur);
+    c.style.opacity=cl(p*1.6);
+    c.style.transform=`translateY(${(1-eback(p))*46}px) scale(${lerp(.6,1,eback(p))})`;});
+}
+
+/* 배경 보케·잎사귀 (결정론적) */
+const rnd=(i)=>{const x=Math.sin(i*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const BOK=[];for(let i=0;i<22;i++){const d=document.createElement('div');d.className='bokeh';$('bok').appendChild(d);BOK.push({el:d,x:rnd(i)*1920,y:rnd(i+50)*1080,r:40+rnd(i+90)*120,sp:8+rnd(i+7)*22,ph:rnd(i+3)*6})}
+const LEAF=[];for(let i=0;i<9;i++){const d=document.createElement('div');d.className='leaf';$('leaves').appendChild(d);LEAF.push({el:d,x:rnd(i+300)*1920,sp:40+rnd(i+310)*50,ph:rnd(i+320)*30,s:.7+rnd(i+330)*.8})}
+const HEARTS=[];for(let i=0;i<26;i++){const d=document.createElementNS('http://www.w3.org/2000/svg','svg');d.setAttribute('viewBox','0 0 32 30');d.setAttribute('class','heart');
+  const col=['#f2706a','#f59a5c','#ffb35c','#ef5f7a'][i%4];
+  d.innerHTML=`<path d="M16 29 C16 29 1 19 1 9.5 C1 4.5 5 1 9.5 1 C12.5 1 15 3 16 5 C17 3 19.5 1 22.5 1 C27 1 31 4.5 31 9.5 C31 19 16 29 16 29Z" fill="${col}"/>`;
+  $('hearts').appendChild(d);HEARTS.push({el:d,k:i})}
+
+/* 사진 카드 레이아웃 키프레임: x,y,w,h,rot,fx,fy,zoom,rad,bd */
+const IMW=1024,IMH=1536;
+const FULL=(fx,fy,z)=>({x:0,y:0,w:1920,h:1080,rot:0,fx,fy,zoom:z,rad:0,bd:0});
+const CK=[
+ [0.0, FULL(560,900,1.30)],
+ [1.7, FULL(560,880,1.18)],
+ [2.7, {x:150,y:80,w:600,h:900,rot:-2.5,fx:512,fy:768,zoom:1.0,rad:26,bd:14}],
+ [4.6, {x:150,y:80,w:600,h:900,rot:-1.5,fx:512,fy:768,zoom:1.03,rad:26,bd:14}],
+ [5.4, FULL(430,960,2.15)],
+ [6.3, FULL(470,950,2.25)],
+ [6.9, FULL(720,960,2.25)],
+ [7.5, FULL(770,720,2.15)],
+ [8.0, FULL(790,800,2.0)],
+ [8.5, FULL(810,1280,2.1)],
+ [9.3, {x:110,y:90,w:560,h:840,rot:-2,fx:512,fy:768,zoom:1.0,rad:26,bd:14}],
+ [13.2,{x:110,y:90,w:560,h:840,rot:-1,fx:530,fy:800,zoom:1.06,rad:26,bd:14}],
+ [14.0,{x:250,y:110,w:560,h:840,rot:2,fx:600,fy:900,zoom:1.25,rad:26,bd:14}],
+ [17.6,{x:250,y:110,w:560,h:840,rot:1,fx:600,fy:900,zoom:1.32,rad:26,bd:14}],
+ [18.4,{x:60,y:560,w:300,h:450,rot:-6,fx:512,fy:768,zoom:1.0,rad:18,bd:10}],
+ [22.4,{x:60,y:560,w:300,h:450,rot:-5,fx:512,fy:768,zoom:1.0,rad:18,bd:10}],
+ [23.2,{x:110,y:530,w:290,h:435,rot:-5,fx:512,fy:768,zoom:1.0,rad:18,bd:10}],
+ [29.8,{x:110,y:530,w:290,h:435,rot:-3,fx:512,fy:768,zoom:1.04,rad:18,bd:10}],
+];
+/* 아바타: cx(중심x), by(받침 바닥y), h(높이), op */
+const AK=[
+ [0,{cx:2300,by:940,h:820,op:0}],
+ [8.9,{cx:2300,by:940,h:820,op:0}],
+ [9.7,{cx:1560,by:945,h:820,op:1}],
+ [13.3,{cx:1560,by:945,h:820,op:1}],
+ [14.0,{cx:1080,by:950,h:760,op:1}],
+ [17.6,{cx:1080,by:950,h:760,op:1}],
+ [18.3,{cx:960,by:950,h:860,op:1}],
+ [22.4,{cx:960,by:950,h:860,op:1}],
+ [23.1,{cx:1715,by:955,h:500,op:1}],
+ [29.8,{cx:1715,by:955,h:500,op:1}],
+];
+function kf(K,t,ease=eio){
+  if(t<=K[0][0])return K[0][1]; if(t>=K[K.length-1][0])return K[K.length-1][1];
+  for(let i=0;i<K.length-1;i++){const [a,A]=K[i],[b,B]=K[i+1];
+    if(t>=a&&t<=b){const x=ease(P(t,a,b)),o={};for(const k in A){o[k]=k==='zoom'?Math.exp(lerp(Math.log(A[k]),Math.log(B[k]),x)):lerp(A[k],B[k],x)}return o}}
+}
+function setCard(c){
+  const el=$('card'),img=$('cimg');
+  el.style.left=c.x+'px';el.style.top=c.y+'px';el.style.width=c.w+'px';el.style.height=c.h+'px';
+  el.style.borderRadius=c.rad+'px';el.style.transform=`rotate(${c.rot}deg)`;
+  el.style.border=`${c.bd}px solid #fffaf2`;
+  const iw=c.w-2*c.bd, ih=c.h-2*c.bd;
+  const cover=Math.max(iw/IMW,ih/IMH), s=cover*c.zoom;
+  let ox=iw/2-c.fx*s, oy=ih/2-c.fy*s;
+  ox=cl(ox,iw-IMW*s,0); oy=cl(oy,ih-IMH*s,0);
+  img.style.width=IMW+'px';img.style.height=IMH+'px';
+  img.style.transform=`translate(${ox}px,${oy}px) scale(${s})`;
+}
+/* 인사(절) 이벤트: [시작, 길이, 깊이] */
+const BOWS=[[12.0,1.5,.8],[19.3,1.9,1.0],[21.4,1.2,.45],[26.5,2.6,1.0]];
+function bowAmt(t){let v=0;for(const [a,d,k] of BOWS){const p=P(t,a,a+d);if(p>0&&p<1){const hold=p<.35?eio(p/.35):p<.65?1:1-eio((p-.65)/.35);v=Math.max(v,hold*k)}}return v}
+const LIP=[[203,480],[223,483],[263,485],[303,482],[333,476],[355,468]];
+function setAvatar(t){
+  const a=kf(AK,t), el=$('av');
+  const enter=P(t,8.9,9.7);
+  const sc=a.h/1221;
+  let bob=Math.sin(t*2.4)*4, sway=Math.sin(t*1.3)*1.2;
+  // 행복 장면: 통통 튀기
+  const hop=win(t,13.9,17.4,.3,.3)*Math.max(0,Math.sin((t-13.9)*7.5))*14;
+  const bw=bowAmt(t);
+  const x=a.cx-265*sc, y=a.by-1221*sc;
+  el.style.opacity=a.op;
+  el.style.transform=`translate(${x}px,${y-bob*0-hop}px) scale(${sc}) rotate(${sway*(1-bw)}deg)`;
+  el.style.transformOrigin='0 0';
+  $('torso').style.transform=`perspective(2400px) translateY(${bw*34}px) rotateX(${-bw*15}deg) scaleY(${1-bw*.035})`;
+  const nod=Math.sin(t*5.2)*1.5*win(t,9.3,13.0)+Math.sin(t*4.4)*1.3*win(t,18.1,22.2);
+  $('head').style.transform=`translateY(${bw*30}px) perspective(2400px) rotateX(${-bw*15-nod}deg) rotate(${Math.sin(t*1.7)*1.5*(1-bw)}deg)`;
+  // 립싱크: 턱 이동 + 입 안쪽
+  const f=Math.round(t*30), m=(AMP[f]||0)*(1-bw*.7);
+  const s=m*11;
+  $('jaw').style.transform=`translateY(${s}px)`;
+  let d='M'+LIP[0][0]+' '+LIP[0][1];
+  for(let i=1;i<LIP.length;i++)d+=' L'+LIP[i][0]+' '+LIP[i][1];
+  for(let i=LIP.length-1;i>=0;i--){const u=i/(LIP.length-1);d+=' L'+LIP[i][0]+' '+(LIP[i][1]+s*Math.sin(Math.PI*u)+.5)}
+  $('mpath').setAttribute('d',s>.4?d+'Z':'');
+  const sh=$('avshadow');sh.style.opacity=a.op;
+  sh.style.transform=`translate(${a.cx-260*sc*1.05}px,${a.by-45*sc}px) scale(${sc*1.05},${sc})`;sh.style.transformOrigin='0 0';
+}
+function setHearts(t){
+  // 장면별 하트: together(음식→아바타), bow(폭발), verse(잔잔)
+  HEARTS.forEach(h=>{
+    const k=h.k; let vis=0,x=0,y=0,s=1,r=0;
+    const tg=13.9+k*0.13, p=P(t,tg,tg+2.2);
+    if(p>0&&p<1&&k<18){ // 음식 카드에서 아바타 쪽으로
+      const sx=520+rnd(k+700)*220, sy=480+rnd(k+710)*320, ex=820+rnd(k+720)*170, ey=90+rnd(k+730)*200;
+      x=lerp(sx,ex,eo(p)); y=lerp(sy,ey,eo(p))-Math.sin(p*Math.PI)*120; vis=Math.sin(p*Math.PI); s=.6+rnd(k+740)*.7; r=(rnd(k+750)-.5)*40;}
+    const tb=19.25+ (k%13)*0.02, pb=P(t,tb,tb+1.8);
+    if(pb>0&&pb<1&&k>=4){const ang=(k/26)*Math.PI*2+rnd(k)*.5, R=230+eo(pb)*(260+rnd(k+800)*180);
+      x=960+Math.cos(ang)*R*1.3; y=420+Math.sin(ang)*R*.8-pb*80; vis=1-pb; s=.7+rnd(k+810)*.9; r=ang*20;}
+    const tv=23.0+k*0.25, pv=P(t,tv,tv+5);
+    if(pv>0&&pv<1&&k%2===0){x=200+rnd(k+900)*1520+Math.sin(pv*6+k)*30; y=1060-pv*700; vis=Math.sin(pv*Math.PI)*.55; s=.5+rnd(k+910)*.5; r=Math.sin(pv*5+k)*20;}
+    h.el.style.opacity=vis; h.el.style.transform=`translate(${x}px,${y}px) scale(${s}) rotate(${r}deg)`;
+  });
+}
+function setBG(t){
+  BOK.forEach((b,i)=>{const y=((b.y-t*b.sp)%1180+1180)%1180-100;const x=b.x+Math.sin(t*.5+b.ph)*30;
+    b.el.style.width=b.el.style.height=b.r+'px';b.el.style.transform=`translate(${x}px,${y}px)`;b.el.style.opacity=.35+.25*Math.sin(t+b.ph)});
+  LEAF.forEach((l,i)=>{const y=((t*l.sp+l.ph*40)%1300)-120, x=l.x+Math.sin(t*.9+l.ph)*80;
+    l.el.style.transform=`translate(${x}px,${y}px) rotate(${t*40+l.ph*20}deg) scale(${l.s})`;l.el.style.opacity=.55});
+  $('bgblur').style.transform=`scale(${1.05+t*.004}) translate(${Math.sin(t*.2)*20}px,0)`;
+  const vr=P(t,22.6,23.6);
+  $('rays').style.opacity=vr*.9; $('rays').style.transform=`rotate(${t*3}deg)`;
+  $('sun').style.opacity=.8+.2*Math.sin(t*.8);
+  $('bgwash').style.opacity=1;
+}
+/* 성경 구절: 한 글자씩 */
+const VERSE='“서로 대접하기를 원망 없이 하고”';
+$('vtext').innerHTML=[...VERSE].map(c=>`<span class="ch">${c===' '?'&nbsp;':c}</span>`).join('');
+const VCH=[...document.querySelectorAll('#vtext .ch')];
+function setVerse(t){
+  const v=$('verse'), o=P(t,22.75,23.35);
+  v.style.display=t>22.7?'block':'none'; if(t<=22.7)return;
+  v.style.opacity=eo(o); v.style.transform=`translateY(${(1-eo(o))*30}px) scale(${lerp(.94,1,eo(o))})`;
+  $('vlabel').style.opacity=P(t,23.0,23.5);
+  VCH.forEach((c,i)=>{const p=P(t,23.35+i*0.085,23.35+i*0.085+0.45);c.style.opacity=p;c.style.transform=`translateY(${(1-eo(p))*16}px)`;c.style.filter=`blur(${(1-p)*6}px)`});
+  const r=P(t,25.9,26.5); $('vref').style.opacity=r; $('vref').style.transform=`translateY(${(1-eo(r))*10}px)`;
+  const ln=eo(P(t,25.9,26.7)); $('vline1').style.transform=`scaleX(${ln})`;$('vline1').style.transformOrigin='100% 50%';
+  $('vline2').style.transform=`scaleX(${-ln})`;$('vline2').style.transformOrigin='50% 50%';
+  $('vline1').style.opacity=$('vline2').style.opacity=ln;
+}
+/* 자막 */
+const KEY=['정성','사랑','섬김','감사'];
+function hl(s){let o=s;KEY.forEach(k=>o=o.split(k).join(`<span class="w">${k}</span>`));return o}
+let lastSub=null;
+function setSub(t){
+  const el=$('sub'); let cur=null;
+  for(const s of SC){if(t>=s.t-0.15&&t<=s.e+0.35){cur=s}}
+  if(!cur){el.style.display='none';return}
+  el.style.display='block';
+  if(lastSub!==cur.id){el.innerHTML=hl(cur.text);lastSub=cur.id}
+  const o=Math.min(P(t,cur.t-0.15,cur.t+0.1),1-P(t,cur.e+0.1,cur.e+0.35));
+  el.style.opacity=o; el.style.transform=`translateX(-50%) translateY(${(1-o)*12}px)`;
+}
+function panel(id,show,x,y,w,h){const el=$(id);el.style.display=show>0?'block':'none';el.style.left=x+'px';el.style.top=y+'px';el.style.width=w+'px';el.style.height=h+'px';el.style.opacity=show;el.style.transform=`scale(${lerp(.92,1,eo(show))})`}
+
+window.setTime=function(t){
+  setBG(t);
+  setCard(kf(CK,t));
+  const sh=P(t,2.7,3.6)+P(t,9.4,10.2)*0; $('cardshine').style.transform=`translateX(${lerp(-700,700,eio(P(t,2.8,3.8)))}px)`;
+  setAvatar(t);
+  setHearts(t);
+  // 1) 따뜻한 아침
+  kt('t1k',1180,330,t,2.5,4.75,{st:.02});
+  kt('t1a',1180,400,t,2.6,4.75);
+  kt('t1b',1180,500,t,2.95,4.75,{st:.05});
+  // 2) 정성
+  const p2=win(t,5.3,8.7,.4,.35);
+  panel('p2',p2,90,80,760,260);
+  kt('t2a',140,118,t,5.45,8.7);
+  kt('t2b',140,212,t,5.8,8.7,{st:.06});
+  // 3) 감사 아바타
+  kt('t3a',1010,300,t,9.9,13.35,{align:'center'});
+  kt('t3b',1010,395,t,10.3,13.35,{align:'center',st:.05});
+  kt('t3c',1010,490,t,10.8,13.35,{align:'center',st:.06});
+  // 4) 함께
+  kt('t4a',1340,300,t,14.0,17.75);
+  kt('t4b',1340,385,t,14.35,17.75,{st:.07});
+  kt('t4c',1340,485,t,14.75,17.75,{st:.07});
+  // 5) 인사
+  kt('t5a',560,330,t,18.3,22.5,{align:'right',st:.07});
+  kt('t5b',1360,330,t,18.9,22.5,{st:.07});
+  kt('t5c',1360,430,t,19.3,22.5,{st:.08});
+  setVerse(t);
+  setSub(t);
+  // 마지막 감사 리본
+  const rb=$('ribbon'), ro=P(t,26.55,27.1);
+  rb.style.display=ro>0?'block':'none'; rb.style.opacity=ro; rb.style.transform=`translateX(-50%) scale(${lerp(.85,1,eback(ro))})`;
+  // 장면 전환 플래시 & 끝 페이드
+  let fl=0;[4.8,8.8,13.4,17.8,22.6].forEach(x=>{fl=Math.max(fl,(1-Math.abs(t-x)/0.28))});$('flash').style.opacity=cl(fl)*.35;
+  $('fade').style.opacity=P(t,0,0.6)<1?1-P(t,0,0.6):0;
+};
+setTime(0);
+</script></body></html>
