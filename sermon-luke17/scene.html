@@ -1,0 +1,611 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="timeline.js"></script>
+<script>
+// 범사에 그를 인정하라 (누가복음 17:11-19) — 설교 하이라이트 모션그래픽
+const W = 1920, H = 1080, FPS = 30, DUR = TL.dur;
+const ctx = document.getElementById('c').getContext('2d');
+const TAU = Math.PI * 2;
+const KR = '"WenQuanYi Zen Hei", sans-serif';
+const SERIF = '"DejaVu Serif", "Liberation Serif", serif';
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const back = x => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function rnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+const C = { night: '#070d1c', navy: '#0f1c35', deep: '#16284a', gold: '#e6c37a', goldL: '#f7e3b0', amber: '#d89a4a', ivory: '#f6efe0', mist: '#9fb0c8', gray: '#5d6676', rose: '#c98a7a' };
+
+const scene = id => TL.scenes.find(s => s.id === id);
+const L = (cid, i) => TL.lines.filter(l => l.clip === cid)[i];
+const clipOf = id => TL.clips.find(c => c.id === id);
+function inScene(t) { for (const s of TL.scenes) if (t >= s.t && t < s.e) return s; return TL.scenes[TL.scenes.length - 1]; }
+// 장면 전환용 가시도 (페이드 인/아웃)
+function vis(t, a, b, fi = 0.6, fo = 0.6) { return Math.min(prog(t, a, a + fi), 1 - prog(t, b - fo, b)); }
+
+function txt(s, x, y, size, color, align = 'center', font = KR, weight = 0.03, alpha = 1) {
+  ctx.save(); ctx.globalAlpha *= alpha;
+  ctx.font = `${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+  if (weight) { ctx.lineWidth = size * weight; ctx.strokeStyle = color; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = color; ctx.fillText(s, x, y); ctx.restore();
+}
+function glowTxt(s, x, y, size, color, blur, align = 'center', font = KR, weight = 0.03, alpha = 1) {
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = blur; txt(s, x, y, size, color, align, font, weight, alpha); ctx.restore();
+}
+// 글자 하나씩 떠오르기
+function revealTxt(s, x, y, size, color, k, font = KR, spread = 0.5, weight = 0.03) {
+  ctx.save(); ctx.font = `${size}px ${font}`;
+  const chars = [...s]; const widths = chars.map(c => ctx.measureText(c).width); const tw = widths.reduce((a, b) => a + b, 0);
+  let cx = x - tw / 2;
+  chars.forEach((ch, i) => {
+    const kk = eout(clamp((k - i / chars.length * spread) / (1 - spread)));
+    if (kk > 0) txt(ch, cx + widths[i] / 2, y + (1 - kk) * size * 0.35, size, color, 'center', font, weight, kk);
+    cx += widths[i];
+  });
+  ctx.restore();
+}
+function rrect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function radial(x, y, r, color, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+
+// ---------- 배경: 깊은 밤빛 → 장면별 온도, 빛 먼지, 필름 그레인 ----------
+const TONE = { intro: [0.15, 0], spencer: [0.0, 0], ten: [0.1, 0], go: [0.2, 0], clean: [0.45, 0], nine: [0.3, 0], savior: [0.45, 0], king: [0.6, 0],
+  moon: [0.05, 0], admit: [0.5, 0], prov: [0.7, 0], tiles: [0.45, 0], start: [0.7, 0], path: [0.9, 0], outro: [0.75, 0] };
+const grain = document.createElement('canvas'); grain.width = grain.height = 256;
+{ const g = grain.getContext('2d'), d = g.createImageData(256, 256); for (let i = 0; i < d.data.length; i += 4) { const v = rnd(i * 0.37) * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); }
+function warmth(t) {
+  // 장면 경계에서 부드럽게 보간
+  const s = inScene(t), i = TL.scenes.indexOf(s), n = TL.scenes[i + 1];
+  let w = TONE[s.id][0];
+  if (n) w = lerp(w, TONE[n.id][0], eio(prog(t, s.e - 1.2, s.e + 0.0)));
+  return w;
+}
+function mixc(a, b, k) {
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return `rgb(${pa.map((v, i) => Math.round(lerp(v, pb[i], k))).join(',')})`;
+}
+function background(t) {
+  const w = warmth(t);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, mixc('#060b18', '#1b2238', w)); g.addColorStop(0.6, mixc('#0d1830', '#3a2e3a', w)); g.addColorStop(1, mixc('#070d1c', '#4a3428', w));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  radial(W / 2 + Math.sin(t * 0.07) * 200, -120, 1100, mixc('#2a4a7a', '#f0c27a', w), 0.28 + 0.12 * w);
+  // 위에서 내려오는 빛줄기
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 5; i++) {
+    const x = 380 + i * 300 + Math.sin(t * 0.11 + i * 1.7) * 90, a = (0.025 + 0.02 * Math.sin(t * 0.3 + i)) * (0.6 + w);
+    const gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, `rgba(255,226,170,${a})`); gr.addColorStop(1, 'rgba(255,226,170,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(x - 30, -10); ctx.lineTo(x + 30, -10); ctx.lineTo(x + 260, H); ctx.lineTo(x - 140, H); ctx.closePath(); ctx.fill();
+  }
+  // 빛 먼지
+  for (let i = 0; i < 70; i++) {
+    const sp = 0.004 + rnd(i) * 0.01, p = (t * sp + rnd(i + 3)) % 1;
+    const x = rnd(i * 7) * W + Math.sin(t * 0.3 + i) * 40, y = H - p * H, r = 1 + rnd(i + 9) * 2.6;
+    const a = Math.sin(p * Math.PI) * (0.25 + 0.4 * rnd(i + 5));
+    ctx.fillStyle = `rgba(255,230,180,${a})`; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function finish(t) {
+  // 비네팅 + 그레인
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.6)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.globalAlpha = 0.045; ctx.globalCompositeOperation = 'overlay';
+  const f = Math.floor(t * FPS), ox = Math.floor(rnd(f) * 256), oy = Math.floor(rnd(f + 1) * 256);
+  ctx.fillStyle = ctx.createPattern(grain, 'repeat'); ctx.translate(-ox, -oy); ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore();
+}
+
+// ---------- 사람 실루엣 ----------
+function person(x, y, s, col, opts = {}) {
+  const { walk = 0, face = 1, kneel = 0, glow = 0, alpha = 1, lean = 0 } = opts;
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.scale(face * s, s);
+  if (glow > 0) { radial(0, -70, 120, 'rgba(255,225,160,1)', glow * 0.55); }
+  const bob = Math.abs(Math.sin(walk * Math.PI)) * 3;
+  const kd = kneel * 38;  // 무릎 꿇기: 몸이 내려가고 앞으로 숙임
+  ctx.translate(0, kd - bob); ctx.rotate(lean + kneel * 0.35);
+  ctx.fillStyle = col;
+  // 옷(로브)
+  const sw = Math.sin(walk * TAU) * 7 * (1 - kneel);
+  ctx.beginPath(); ctx.moveTo(-12, -78); ctx.quadraticCurveTo(-26, -40, -24 - sw, 0 - kd * 0.4); ctx.lineTo(24 + sw, 0 - kd * 0.4); ctx.quadraticCurveTo(26, -40, 12, -78); ctx.closePath(); ctx.fill();
+  // 머리 + 두건
+  ctx.beginPath(); ctx.arc(2, -94, 15, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-14, -100); ctx.quadraticCurveTo(0, -122, 18, -98); ctx.quadraticCurveTo(14, -84, -16, -72); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+// 열 사람 위치
+const TEN = [...Array(10)].map((_, i) => ({ dx: (i - 4.5) * 92 + (rnd(i) - 0.5) * 30, dy: (rnd(i + 4) - 0.5) * 34, s: 1.05 + rnd(i + 8) * 0.2 }));
+const RETURNER = 6;
+
+// ---------- 음성 반응 파형 ----------
+function envAt(t) { const i = Math.floor(t * FPS); return TL.env[i] || 0; }
+function voiceBars(t, x, y, a) {
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  for (let i = 0; i < 24; i++) {
+    const e = envAt(t - i * 0.02), h = 4 + clamp(e) * 26 * (0.55 + 0.45 * Math.sin(i * 1.3 + t * 9));
+    ctx.fillStyle = C.gold; rrect(x + i * 9 - 108, y - h / 2, 5, h, 2.5); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------- 자막 ----------
+function subtitle(t) {
+  const l = TL.lines.find(l => t >= l.t - 0.05 && t < l.e + 0.12);
+  // 말하는 동안 띠 유지
+  const c = TL.clips.find(c => t >= c.t - 0.3 && t < c.e + 0.35);
+  const band = c ? Math.min(prog(t, c.t - 0.3, c.t), 1 - prog(t, c.e, c.e + 0.35)) : 0;
+  if (band > 0) {
+    const g = ctx.createLinearGradient(0, 860, 0, H); g.addColorStop(0, 'rgba(4,8,18,0)'); g.addColorStop(0.45, `rgba(4,8,18,${0.62 * band})`); g.addColorStop(1, `rgba(4,8,18,${0.78 * band})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 860, W, H - 860);
+    voiceBars(t, W / 2, 1040, band * 0.75);
+  }
+  if (!l) return;
+  const a = Math.min(prog(t, l.t - 0.05, l.t + 0.15), 1 - prog(t, l.e - 0.02, l.e + 0.12));
+  ctx.save(); ctx.globalAlpha = a; ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
+  let size = 50; ctx.font = `${size}px ${KR}`;
+  while (ctx.measureText(l.text).width > 1640 && size > 38) { size -= 2; ctx.font = `${size}px ${KR}`; }
+  txt(l.text, W / 2, 990 + (1 - eout(clamp(a))) * 8, size, C.ivory, 'center', KR, 0.035);
+  ctx.restore();
+}
+
+// ---------- 챕터 표시 ----------
+const CH = [
+  { ids: ['spencer'], n: 'PROLOGUE', title: '감사를 받지 못한 영웅', ref: '1860 · 미시간 호수' },
+  { ids: ['ten', 'go', 'clean'], n: 'I', title: '열 명의 외침', ref: '누가복음 17:12-14' },
+  { ids: ['nine'], n: 'II', title: '나머지 아홉은 어디 있느냐', ref: '누가복음 17:15-17' },
+  { ids: ['savior', 'king'], n: 'III', title: '의사가 아닌 구원자 예수', ref: '누가복음 17:16-19' },
+  { ids: ['moon'], n: 'IV', title: '손가락이 아니라 달을', ref: '見月忘指' },
+  { ids: ['admit', 'prov'], n: 'V', title: '감사의 뿌리, 인정', ref: '잠언 3:6' },
+  { ids: ['tiles'], n: 'VI', title: '우리 안의 아홉과 하나', ref: '범사(凡事)에' },
+  { ids: ['start', 'path'], n: 'VII', title: '감사의 시작은 인정', ref: '누가복음 17:19' },
+];
+CH.forEach(c => { c.t = scene(c.ids[0]).t; c.e = scene(c.ids[c.ids.length - 1]).e; });
+// 챕터 시작 직후 중앙 큰 제목 → 좌상단 라벨로
+function chapter(t) {
+  const c = CH.find(c => t >= c.t && t < c.e); if (!c) return 0;
+  const big = c.n === 'PROLOGUE' ? 2.6 : 2.1;
+  const kIn = prog(t, c.t, c.t + 0.7), kOut = prog(t, c.t + big, c.t + big + 0.6);
+  const centerA = Math.min(eout(kIn), 1 - kOut);
+  if (centerA > 0) {
+    ctx.save(); ctx.globalAlpha = centerA;
+    const y = 470 - kOut * 30;
+    txt(c.n, W / 2, y - 92, 34, C.gold, 'center', SERIF, 0.0);
+    ctx.fillStyle = C.gold; ctx.fillRect(W / 2 - 60 * eout(kIn), y - 70, 120 * eout(kIn), 2);
+    revealTxt(c.title, W / 2, y + 20, 86, C.ivory, prog(t, c.t + 0.1, c.t + 1.3), KR, 0.55, 0.04);
+    txt(c.ref, W / 2, y + 90, 32, C.mist, 'center', KR, 0.0, prog(t, c.t + 0.6, c.t + 1.2));
+    ctx.restore();
+  }
+  // 좌상단 라벨
+  const la = Math.min(prog(t, c.t + big, c.t + big + 0.8), 1 - prog(t, c.e - 0.5, c.e));
+  if (la > 0) {
+    ctx.save(); ctx.globalAlpha = la * 0.9;
+    ctx.fillStyle = C.gold; ctx.fillRect(80, 66, 3, 52);
+    txt(c.n, 100, 88, 22, C.gold, 'left', SERIF, 0);
+    txt(c.title, 100, 116, 28, C.ivory, 'left', KR, 0.02);
+    ctx.restore();
+  }
+  // 우상단 고정 정보
+  ctx.save(); ctx.globalAlpha = la * 0.6;
+  txt('범사에 그를 인정하라  ·  김현수 목사', W - 80, 100, 24, C.mist, 'right', KR, 0); ctx.restore();
+  return 1 - centerA;  // 본 그래픽 가시도
+}
+
+// ---------- 장면들 ----------
+function drawIntro(t, s) {
+  const a = 1 - prog(t, s.e - 0.8, s.e);
+  ctx.save(); ctx.globalAlpha = a;
+  radial(W / 2, 470, 520 * (0.8 + 0.2 * eout(prog(t, 0, 3))), 'rgba(240,200,130,1)', 0.22 * prog(t, 0.3, 2.5));
+  // 십자 빛
+  const k = eout(prog(t, 0.4, 2.6));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(255,228,170,${0.5 * k})`;
+  ctx.fillRect(W / 2 - 1.5, 470 - 300 * k, 3, 600 * k); ctx.fillRect(W / 2 - 200 * k, 380, 400 * k, 3); ctx.restore();
+  txt('누가복음 17:11-19 말씀', W / 2, 330, 34, C.mist, 'center', KR, 0, prog(t, 0.8, 1.8));
+  glowTxt('범사에 그를 인정하라', W / 2, 520, 124, C.goldL, 30 * prog(t, 1.5, 3), 'center', KR, 0.045, 0);
+  revealTxt('범사에 그를 인정하라', W / 2, 520, 124, C.goldL, prog(t, 1.0, 3.2), KR, 0.6, 0.045);
+  ctx.fillStyle = C.gold; const lw = 280 * eout(prog(t, 2.6, 3.6)); ctx.fillRect(W / 2 - lw, 580, lw * 2, 2);
+  txt('김현수 목사', W / 2, 660, 44, C.ivory, 'center', KR, 0.02, prog(t, 3.0, 4.0));
+  txt('“너는 범사에 그를 인정하라 그리하면 네 길을 지도하시리라” (잠 3:6)', W / 2, 760, 30, C.mist, 'center', KR, 0, prog(t, 3.8, 4.8) * 0.85);
+  ctx.restore();
+}
+
+function drawSpencer(t, s, gv) {
+  const c = clipOf('c01'), lt = t - s.t;
+  // 호수 + 침몰하는 배 (앞 6초) → 숫자 대비 (클립)
+  const lakeA = Math.min(1, 1 - prog(t, c.t + 2.5, c.t + 4)) * gv;
+  if (lakeA > 0) {
+    ctx.save(); ctx.globalAlpha = lakeA;
+    const hz = 560;
+    for (let i = 0; i < 16; i++) {
+      const y = hz + i * i * 1.8 + i * 8; ctx.strokeStyle = `rgba(150,180,220,${0.08 + i * 0.012})`; ctx.lineWidth = 1.5 + i * 0.2;
+      ctx.beginPath(); for (let x = 0; x <= W; x += 20) { const yy = y + Math.sin(x * 0.01 + t * (0.8 + i * 0.05) + i) * (2 + i * 0.6); x ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); } ctx.stroke();
+    }
+    // 배: 기울며 가라앉음
+    const sink = eio(prog(t, s.t + 0.5, s.t + 6.5));
+    ctx.save(); ctx.translate(1240, hz + 6 + sink * 70); ctx.rotate(-0.04 - sink * 0.32);
+    ctx.beginPath(); ctx.rect(-400, -400, 800, 400 - sink * 0); ctx.clip();
+    ctx.fillStyle = '#0a1222'; ctx.strokeStyle = 'rgba(200,215,235,.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-230, -10); ctx.lineTo(230, -10); ctx.lineTo(190, 30); ctx.lineTo(-200, 30); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillRect(-150, -60, 260, 50); ctx.strokeRect(-150, -60, 260, 50);
+    ctx.fillRect(-30, -130, 26, 70); ctx.strokeRect(-30, -130, 26, 70);
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = `rgba(255,200,120,${0.6 * (1 - sink)})`; ctx.fillRect(-130 + i * 40, -44, 14, 12); }
+    ctx.restore();
+    // 헤엄쳐 왕복하는 구조자 (빛점)
+    const sw = prog(t, s.t + 1.5, c.t + 2);
+    const ph = (sw * 6) % 2, px = ph < 1 ? lerp(380, 1050, eio(ph)) : lerp(1050, 380, eio(ph - 1));
+    radial(px, hz + 70, 40, 'rgba(255,220,150,1)', 0.7 * prog(t, s.t + 1.5, s.t + 2.2));
+    ctx.fillStyle = C.goldL; ctx.beginPath(); ctx.arc(px, hz + 70, 5, 0, TAU); ctx.fill();
+    ctx.restore();
+    // 정보 텍스트
+    ctx.save(); ctx.globalAlpha = lakeA;
+    txt('1860년 9월, 미시간 호수', 200, 300, 40, C.ivory, 'left', KR, 0.02, prog(t, s.t + 2.8, s.t + 3.6));
+    txt('여객선 레이디 엘진호 침몰', 200, 356, 34, C.mist, 'left', KR, 0, prog(t, s.t + 3.2, s.t + 4.0));
+    const cnt = Math.round(16 * eio(prog(t, s.t + 3.6, c.t + 1.5)));
+    txt(`에드워드 스펜서 — 거친 물살을 ${cnt}번 오가며`, 200, 430, 34, C.goldL, 'left', KR, 0.01, prog(t, s.t + 3.6, s.t + 4.4));
+    ctx.restore();
+  }
+  // 숫자 대비: 구조 17명 / 감사 인사 0명
+  const numA = Math.min(prog(t, c.t + 3, c.t + 4), 1 - prog(t, s.e - 0.6, s.e)) * gv;
+  if (numA > 0) {
+    ctx.save(); ctx.globalAlpha = numA;
+    const l1 = L('c01', 1), l2 = L('c01', 2);
+    const n17 = Math.round(17 * eout(prog(t, l1.t, l1.t + 1.6)));
+    const x1 = 620, x2 = 1300, y = 520;
+    glowTxt(String(n17), x1, y, 230, C.goldL, 30, 'center', SERIF, 0.0);
+    txt('구조한 사람', x1, y + 80, 40, C.ivory, 'center', KR, 0.02);
+    const k0 = prog(t, l2.t + 1.2, l2.t + 2.2);
+    txt('0', x2, y, 230, C.mist, 'center', SERIF, 0.0, k0);
+    txt('감사 인사를 한 사람', x2, y + 80, 40, C.ivory, 'center', KR, 0.02, k0);
+    ctx.fillStyle = `rgba(230,195,122,${0.5 * k0})`; ctx.fillRect(W / 2 - 1, 330, 2, 300 * k0);
+    const l3 = L('c01', 3);
+    txt('“아무도 고맙다고 말하지 않았습니다”', W / 2, 760, 40, C.goldL, 'center', KR, 0.02, prog(t, l3.t, l3.t + 0.8) * 0.9);
+    ctx.restore();
+  }
+}
+
+// 열 명: 멀리 서서 외침 → 제사장에게 걸어감 → 깨끗해짐 → 한 명만 돌아옴
+function tenPeople(t, gv) {
+  const sT = scene('ten'), sG = scene('go'), sC = scene('clean'), sN = scene('nine');
+  const walkK = prog(t, sG.t + 1.0, sN.t + 6);           // 오른쪽으로 걷기
+  const cleanK = eio(prog(t, sC.t + 0.3, sC.e - 0.8));      // 회색 → 흰빛
+  const l5 = L('c05', 1);
+  const turnK = eio(prog(t, l5.t, l5.t + 2.5));             // 한 사람 돌아섬
+  const backK = eio(prog(t, l5.t + 0.8, L('c05', 3).t + 1.2)); // 돌아와 엎드림
+  const nineFade = prog(t, L('c05', 4).t, L('c05', 5).t + 0.5);
+  const baseY = 700, cx0 = 980;
+  // 길
+  ctx.save(); ctx.globalAlpha = gv * 0.5;
+  const g = ctx.createLinearGradient(0, baseY - 6, 0, baseY + 40); g.addColorStop(0, 'rgba(230,195,122,.35)'); g.addColorStop(1, 'rgba(230,195,122,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, baseY - 4, W, 44); ctx.restore();
+  // 예수님 쪽 빛 (왼쪽)
+  const jA = gv * (0.55 + 0.45 * prog(t, l5.t, l5.t + 3));
+  radial(170, baseY - 120, 300, 'rgba(255,225,160,1)', 0.45 * jA);
+  ctx.save(); ctx.globalAlpha = jA * 0.9; ctx.strokeStyle = C.goldL; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(170, baseY - 250); ctx.lineTo(170, baseY - 20); ctx.moveTo(110, baseY - 190); ctx.lineTo(230, baseY - 190); ctx.stroke(); ctx.restore();
+  // 제사장/성전 (오른쪽, 걷기 시작할 때 보임)
+  const tA = gv * prog(t, sG.t + 0.5, sG.t + 1.5) * (1 - nineFade * 0.6);
+  if (tA > 0) {
+    ctx.save(); ctx.globalAlpha = tA * 0.7; ctx.strokeStyle = C.mist; ctx.lineWidth = 3; const tx = 1740;
+    ctx.beginPath(); ctx.moveTo(tx - 110, baseY - 200); ctx.lineTo(tx, baseY - 270); ctx.lineTo(tx + 110, baseY - 200); ctx.closePath(); ctx.stroke();
+    for (let i = 0; i < 4; i++) { ctx.strokeRect(tx - 92 + i * 58, baseY - 196, 12, 190); }
+    ctx.restore();
+    txt('제사장', 1740, baseY + 60, 28, C.mist, 'center', KR, 0, tA * 0.8);
+  }
+  TEN.forEach((p, i) => {
+    let x = cx0 + p.dx + walkK * 440, y = baseY + p.dy * 0.4, face = 1, walk = walkK * 14 + rnd(i) , kneel = 0, alpha = gv;
+    if (i === RETURNER) {
+      const xr = cx0 + p.dx + Math.min(walkK, prog(l5.t, sG.t + 1.0, sN.t + 6)) * 440;
+      x = lerp(xr, 360, backK); face = turnK > 0.5 ? -1 : 1; walk = turnK > 0 ? t * 1.6 * (1 - prog(t, L('c05', 3).t, L('c05', 3).t + 0.5)) : walk; kneel = prog(t, L('c05', 3).t + 0.3, L('c05', 3).t + 1.3);
+    } else {
+      alpha *= 1 - nineFade * 0.85;
+    }
+    // 외침: 진동 + 소리 고리
+    const cry = scene('ten'); const crying = t > L('c02', 2).t - 0.2 && t < cry.e;
+    if (crying && i % 3 === 0) {
+      ctx.save(); ctx.globalAlpha = alpha * 0.5; ctx.strokeStyle = C.mist; ctx.lineWidth = 2;
+      for (let r = 0; r < 2; r++) { const ph = (t * 0.9 + r * 0.5 + i * 0.13) % 1; ctx.globalAlpha = alpha * 0.4 * (1 - ph); ctx.beginPath(); ctx.arc(x, y - 150, 20 + ph * 60, -2.4, -0.7); ctx.stroke(); }
+      ctx.restore();
+    }
+    const cl = i === RETURNER ? Math.max(cleanK, 0) : cleanK;
+    const col = mixc('#4a5262', '#f3ead6', cl);
+    const glow = cl * (i === RETURNER ? 0.6 + 0.4 * backK : 0.35);
+    person(x, y, p.s * 0.95, col, { walk, face, kneel, glow, alpha });
+  });
+  return { baseY };
+}
+function drawTen(t, s, gv) {
+  tenPeople(t, gv);
+  const l = L('c02', 2);
+  const k = prog(t, l.t + 0.2, l.t + 1.2);
+  ctx.save(); ctx.globalAlpha = gv * Math.min(k, 1 - prog(t, s.e - 0.3, s.e + 0.3));
+  glowTxt('“예수 선생님이여, 우리를 불쌍히 여기소서”', W / 2, 300, 58, C.goldL, 20, 'center', KR, 0.035);
+  txt('누가복음 17:13', W / 2, 360, 28, C.mist, 'center', KR, 0); ctx.restore();
+  txt('멀리 서서', W / 2, 820, 30, C.mist, 'center', KR, 0, gv * Math.min(prog(t, s.t + 2.5, s.t + 3.3), 1 - prog(t, s.e - 0.6, s.e)) * 0.8);
+}
+function drawGo(t, s, gv) {
+  tenPeople(t, gv);
+  const l = L('c03', 1);
+  ctx.save(); ctx.globalAlpha = gv * Math.min(prog(t, l.t, l.t + 0.8), 1 - prog(t, s.e - 0.4, s.e));
+  glowTxt('“가서 제사장들에게 너희 몸을 보이라”', W / 2, 300, 58, C.goldL, 20, 'center', KR, 0.035);
+  txt('누가복음 17:14', W / 2, 360, 28, C.mist, 'center', KR, 0);
+  const l3 = L('c03', 3);
+  txt('아직 낫지 않았지만, 말씀을 의지하여', W / 2, 820, 34, C.ivory, 'center', KR, 0.01, prog(t, l3.t, l3.t + 0.8));
+  ctx.restore();
+}
+function drawClean(t, s, gv) {
+  tenPeople(t, gv);
+  ctx.save(); ctx.globalAlpha = gv * Math.min(prog(t, s.t + 0.6, s.t + 1.5), 1 - prog(t, s.e - 0.2, s.e + 0.5));
+  glowTxt('가다가 깨끗함을 받은지라', W / 2, 300, 66, C.goldL, 28, 'center', KR, 0.04);
+  txt('누가복음 17:14', W / 2, 360, 28, C.mist, 'center', KR, 0); ctx.restore();
+}
+function drawNine(t, s, gv) {
+  tenPeople(t, gv);
+  const l0 = L('c05', 0), l1 = L('c05', 1), l5 = L('c05', 5), l7 = L('c05', 7);
+  // 1 / 10
+  const kA = Math.min(prog(t, l0.t + 1.5, l0.t + 2.4), 1 - prog(t, l5.t - 0.6, l5.t));
+  if (kA > 0) {
+    ctx.save(); ctx.globalAlpha = kA * gv;
+    glowTxt('1', W / 2 - 70, 330, 190, C.goldL, 30, 'right', SERIF, 0);
+    txt('/', W / 2, 330, 120, C.mist, 'center', SERIF, 0);
+    txt('10', W / 2 + 70, 330, 190, C.mist, 'left', SERIF, 0, 0.6);
+    txt('돌아와 영광을 돌린 사람', W / 2, 400, 32, C.ivory, 'center', KR, 0.01, prog(t, l1.t, l1.t + 1));
+    ctx.restore();
+  }
+  const qA = Math.min(prog(t, l5.t, l5.t + 0.7), 1 - prog(t, s.e - 0.6, s.e));
+  if (qA > 0) {
+    ctx.save(); ctx.globalAlpha = qA * gv;
+    const pulse = 1 + 0.03 * Math.sin((t - l7.t) * 5) * prog(t, l7.t, l7.t + 0.3);
+    ctx.translate(W / 2, 300); ctx.scale(pulse, pulse);
+    glowTxt('“나머지 아홉은 어디 있느냐?”', 0, 0, 84, C.goldL, 30, 'center', KR, 0.04);
+    txt('누가복음 17:17', 0, 64, 28, C.mist, 'center', KR, 0);
+    ctx.restore();
+  }
+}
+// 의사 예수 vs 구원자 예수
+function drawSavior(t, s, gv) {
+  const l1 = L('c06', 1), l3 = L('c06', 3), l4 = L('c06', 4);
+  const a = gv * (1 - prog(t, s.e - 0.6, s.e));
+  const lx = 600, rx = 1320, y = 480;
+  const kL = prog(t, s.t + 2.4, s.t + 3.2), kR = prog(t, l4.t - 0.2, l4.t + 1.0);
+  const strike = eio(prog(t, l3.t + 0.2, l3.t + 1.0));
+  ctx.save(); ctx.globalAlpha = a;
+  // 왼쪽: 의사 (+ 표시)
+  ctx.save(); ctx.globalAlpha *= kL * (1 - 0.55 * strike); ctx.translate(lx, y - 120);
+  ctx.strokeStyle = C.mist; ctx.lineWidth = 3; rrect(-90, -90, 180, 180, 30); ctx.stroke();
+  ctx.fillStyle = C.mist; ctx.fillRect(-14, -55, 28, 110); ctx.fillRect(-55, -14, 110, 28); ctx.restore();
+  txt('의사 예수', lx, y + 70, 72, C.mist, 'center', KR, 0.035, kL * (1 - 0.4 * strike));
+  txt('병만 고치고 돌아감', lx, y + 130, 30, C.mist, 'center', KR, 0, kL * 0.8 * (1 - 0.4 * strike));
+  if (strike > 0) { ctx.strokeStyle = C.rose; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(lx - 190, y + 48); ctx.lineTo(lx - 190 + 380 * strike, y + 40); ctx.stroke(); }
+  // 오른쪽: 구원자 (빛나는 십자가)
+  if (kR > 0) {
+    const sc = back(kR);
+    radial(rx, y - 120, 320 * sc, 'rgba(255,220,150,1)', 0.45 * kR);
+    ctx.save(); ctx.translate(rx, y - 120); ctx.scale(sc, sc); ctx.shadowColor = C.goldL; ctx.shadowBlur = 40;
+    ctx.fillStyle = C.goldL; ctx.fillRect(-9, -110, 18, 220); ctx.fillRect(-70, -60, 140, 18); ctx.restore();
+    glowTxt('구원자 예수', rx, y + 70, 84, C.goldL, 26, 'center', KR, 0.04, kR);
+    txt('생명과 구원의 주', rx, y + 130, 30, C.ivory, 'center', KR, 0, kR * 0.85);
+  }
+  ctx.restore();
+}
+// προσκύνησις — 호칭이 바뀜
+function drawKing(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.6, s.e));
+  const l0 = L('c07', 0), l5 = L('c07', 5);
+  ctx.save(); ctx.globalAlpha = a;
+  // 엎드린 사마리아인
+  const kn = prog(t, s.t + 0.6, s.t + 2);
+  person(W / 2 - 520, 740, 1.3, '#f3ead6', { kneel: kn, face: -1, glow: 0.7 });
+  radial(W / 2 - 760, 600, 320, 'rgba(255,220,150,1)', 0.35);
+  txt('προσκύνησις', W / 2 + 120, 230, 64, C.goldL, 'center', SERIF, 0.0, prog(t, s.t + 0.3, s.t + 1.3));
+  txt('왕과 신 앞에 엎드려 경배함 (눅 17:16)', W / 2 + 120, 285, 30, C.mist, 'center', KR, 0, prog(t, s.t + 0.8, s.t + 1.8));
+  const words = ['나의 왕', '나의 신', '나의 주인'];
+  words.forEach((w, i) => {
+    const l = L('c07', 2 + i), k = prog(t, l.t + 0.6, l.t + 1.3);
+    if (k <= 0) return;
+    const y = 420 + i * 120;
+    txt('당신은 이제', W / 2 - 20, y, 36, C.ivory, 'right', KR, 0.01, k);
+    glowTxt(w, W / 2 + 10, y + 8, 84 , C.goldL, 22 * k, 'left', KR, 0.04, k);
+  });
+  // 선생님 → 주
+  const k5 = prog(t, l5.t, l5.t + 0.8);
+  if (k5 > 0) {
+    ctx.save(); ctx.globalAlpha *= k5;
+    txt('선생님', W / 2 + 40, 790, 40, C.mist, 'right', KR, 0.01);
+    txt('ἐπιστάτα', W / 2 + 40, 830, 24, C.mist, 'right', SERIF, 0);
+    txt('→', W / 2 + 120, 800, 50, C.gold, 'center', SERIF, 0);
+    glowTxt('주(主)', W / 2 + 200, 806, 56, C.goldL, 18, 'left', KR, 0.04);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// 견월망지
+function drawMoon(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.7, s.e));
+  const l1 = L('c09', 1), l2 = L('c09', 2);
+  const focus = eio(prog(t, l2.t, l2.t + 2));  // 손가락 → 달로 초점 이동
+  const mx = 1380, my = 330, mr = 150;
+  ctx.save(); ctx.globalAlpha = a;
+  // 별
+  for (let i = 0; i < 60; i++) { const x = rnd(i * 3.1) * W, y = rnd(i * 5.7) * 600; ctx.fillStyle = `rgba(255,240,210,${0.25 + 0.35 * Math.sin(t * 1.5 + i) ** 2})`; ctx.fillRect(x, y, 2, 2); }
+  radial(mx, my, mr * 3.2, 'rgba(255,230,170,1)', 0.25 + 0.35 * focus);
+  ctx.save(); ctx.shadowColor = C.goldL; ctx.shadowBlur = 40 + 40 * focus;
+  ctx.fillStyle = mixc('#cdbf9c', '#fff1c8', focus); ctx.beginPath(); ctx.arc(mx, my, mr * (1 + 0.08 * focus), 0, TAU); ctx.fill(); ctx.restore();
+  ctx.fillStyle = 'rgba(160,140,100,.18)'; [[-40, -30, 26], [50, 20, 18], [-10, 60, 14], [30, -60, 10]].forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(mx + dx, my + dy, r, 0, TAU); ctx.fill(); });
+  glowTxt('예수 그리스도', mx, my + mr + 80, 52, C.goldL, 20, 'center', KR, 0.035, 0.4 + 0.6 * focus);
+  // 가리키는 손 + 달까지 이어지는 점선
+  ctx.save(); ctx.globalAlpha *= 1 - 0.6 * focus; ctx.filter = `blur(${focus * 5}px)`;
+  ctx.translate(470, 700); ctx.rotate(-0.36); ctx.font = '230px "Noto Color Emoji"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('👉', 0, 0); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= 0.55 * prog(t, s.t + 2.2, s.t + 3.2); ctx.setLineDash([6, 14]); ctx.strokeStyle = C.goldL; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(610, 640); ctx.lineTo(mx - mr - 30, my + 60); ctx.stroke(); ctx.restore();
+  const lab = ['치유', '능력', '기적'];
+  lab.forEach((w, i) => {
+    const k = prog(t, s.t + 2.4 + i * 0.4, s.t + 3.0 + i * 0.4);
+    txt(w, 700 + i * 150, 580 - i * 58, 40, C.ivory, 'center', KR, 0.02, k * (1 - 0.5 * focus));
+  });
+  txt('모두 손가락일 뿐', 860, 720, 34, C.mist, 'center', KR, 0, prog(t, l1.t, l1.t + 0.8) * (1 - 0.4 * focus));
+  // 제목
+  txt('見月忘指', 380, 260, 70, C.goldL, 'center', KR, 0.03, prog(t, s.t + 2.3, s.t + 3.2));
+  txt('달을 보고, 손가락은 잊으라', 380, 320, 30, C.mist, 'center', KR, 0, prog(t, s.t + 2.8, s.t + 3.6));
+  ctx.restore();
+}
+// 인정: 나의 작음, 그분의 크심
+function drawAdmit(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.6, s.e));
+  const l0 = L('c10', 1), l2 = L('c11', 2), l4 = L('c11', 4);
+  ctx.save(); ctx.globalAlpha = a;
+  const kW = prog(t, l0.t, l0.t + 1.0);
+  const move = eio(prog(t, l2.t - 1.0, l2.t));
+  ctx.save(); ctx.translate(W / 2, lerp(470, 230, move)); ctx.scale(lerp(1, 0.55, move), lerp(1, 0.55, move));
+  glowTxt('인정', 0, 60, 200 * (0.9 + 0.1 * eout(kW)), C.goldL, 40, 'center', KR, 0.04, kW);
+  txt('認定 · 있는 그대로 알고 받아들임', 0, 150, 34, C.mist, 'center', KR, 0, kW * (1 - move));
+  ctx.restore();
+  const k1 = prog(t, l2.t, l2.t + 1.2), k2 = prog(t, l2.t + 1.4, l2.t + 2.6);
+  if (k1 > 0) {
+    // 작은 나
+    ctx.fillStyle = C.ivory; ctx.globalAlpha = a * k1; ctx.beginPath(); ctx.arc(640, 560, 10, 0, TAU); ctx.fill();
+    txt('나의 작음', 640, 650, 44, C.ivory, 'center', KR, 0.02, k1);
+    ctx.globalAlpha = a;
+    // 크신 그분
+    if (k2 > 0) {
+      const r = 190 * back(k2);
+      radial(1260, 520, r * 1.8, 'rgba(255,220,150,1)', 0.4 * k2);
+      ctx.save(); ctx.globalAlpha = a * k2; ctx.strokeStyle = C.goldL; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(1260, 520, r, 0, TAU); ctx.stroke(); ctx.restore();
+      glowTxt('그분의 크심', 1260, 530, 50, C.goldL, 18, 'center', KR, 0.035, k2);
+    }
+  }
+  const k4 = prog(t, l4.t, l4.t + 0.8);
+  if (k4 > 0) {
+    txt('인정', 760, 800, 48, C.goldL, 'center', KR, 0.04, k4);
+    txt('→', W / 2, 800, 48, C.gold, 'center', SERIF, 0, k4);
+    txt('감사', 1160, 800, 48, C.goldL, 'center', KR, 0.04, prog(t, l4.t + 0.5, l4.t + 1.2));
+  }
+  ctx.restore();
+}
+function drawProv(t, s, gv) {
+  const a = gv * Math.min(prog(t, s.t, s.t + 0.6), 1 - prog(t, s.e - 0.5, s.e + 0.2));
+  ctx.save(); ctx.globalAlpha = a;
+  radial(W / 2, 470, 700, 'rgba(255,215,150,1)', 0.18);
+  txt('잠언 3장 6절', W / 2, 270, 34, C.gold, 'center', KR, 0.01);
+  ctx.fillStyle = C.gold; ctx.fillRect(W / 2 - 40, 300, 80, 2);
+  revealTxt('너는 범사에 그를 인정하라', W / 2, 450, 92, C.goldL, prog(t, s.t + 0.9, s.t + 3.0), KR, 0.6, 0.045);
+  revealTxt('그리하면 네 길을 지도하시리라', W / 2, 600, 80, C.ivory, prog(t, L('c12', 1).t, L('c12', 1).t + 2.0), KR, 0.6, 0.04);
+  ctx.restore();
+}
+// 열 조각: 아홉은 '내가' 한 것, 하나만 '하나님' → 모두 하나님의 은혜
+function drawTiles(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.6, s.e));
+  const l0 = L('c13', 0), l2 = L('c13', 2), l5 = L('c13', 5), l6 = L('c13', 6), l7 = L('c13', 7), l9 = L('c13', 9);
+  ctx.save(); ctx.globalAlpha = a;
+  const tw = 128, th = 170, gap = 22, x0 = W / 2 - (tw * 10 + gap * 9) / 2, y0 = 360;
+  for (let i = 0; i < 10; i++) {
+    const appear = back(prog(t, s.t + 2.4 + i * 0.07, s.t + 3.0 + i * 0.07));
+    const isGod = i === 9;
+    const mine = !isGod && t > l0.t + 0.6;            // 아홉: 내가
+    const godOne = isGod && t > l2.t + 0.2;           // 하나: 하나님
+    // 모두 뒤집힘 (범사에): 아홉 다시 '내가'로 돌아가는 고백 → 마지막에 모두 금빛
+    const flipAll = prog(t, l6.t + 0.2 + i * 0.08, l6.t + 0.7 + i * 0.08);
+    const relapse = prog(t, l7.t, l7.t + 0.6) * (1 - prog(t, l9.t + 0.1 + i * 0.06, l9.t + 0.6 + i * 0.06));
+    let gold = isGod ? (godOne ? 1 : 0) : clamp(flipAll - (isGod ? 0 : relapse));
+    if (isGod && flipAll > 0) gold = 1;
+    const flipScale = Math.abs(Math.cos(Math.PI * (flipAll < 1 && flipAll > 0 && !isGod ? flipAll : 0)));
+    const x = x0 + i * (tw + gap) + tw / 2, y = y0 + th / 2;
+    ctx.save(); ctx.translate(x, y); ctx.scale(appear * Math.max(0.05, flipScale), appear);
+    if (gold > 0.5) { ctx.shadowColor = C.goldL; ctx.shadowBlur = 30; }
+    ctx.fillStyle = gold > 0.5 ? 'rgba(240,205,135,.95)' : 'rgba(70,84,108,.85)';
+    rrect(-tw / 2, -th / 2, tw, th, 16); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = gold > 0.5 ? C.goldL : 'rgba(160,176,200,.5)'; ctx.lineWidth = 2; ctx.stroke();
+    const label = gold > 0.5 ? '하나님' : (mine ? '내가' : '');
+    if (label) txt(label, 0, 14, label === '내가' ? 40 : 34, gold > 0.5 ? '#3a2a14' : C.ivory, 'center', KR, 0.03);
+    ctx.restore();
+  }
+  txt('하나님께서 주신 열 가지', W / 2, 300, 36, C.mist, 'center', KR, 0, prog(t, s.t + 2.6, s.t + 3.4));
+  const capA = prog(t, l6.t + 0.5, l6.t + 1.3);
+  const capB = prog(t, l9.t + 0.3, l9.t + 1.2);
+  ctx.save(); ctx.globalAlpha *= capA * (1 - capB);
+  glowTxt('범사에 — 모든 것을 인정하고 감사', W / 2, 700, 52, C.goldL, 18, 'center', KR, 0.035); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= capB;
+  glowTxt('아홉도, 하나도 — 모두 주님의 은혜', W / 2, 700, 56, C.goldL, 22, 'center', KR, 0.04); ctx.restore();
+  ctx.restore();
+}
+function drawStart(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.6, s.e));
+  const l2 = L('c14', 2), lq = L('c16', 0);
+  ctx.save(); ctx.globalAlpha = a;
+  const qs = [L('c14', 0), L('c14', 1)];
+  qs.forEach((l, i) => txt(i ? '누가 예수님께 감사할 수 있습니까?' : '누가 하나님께 감사할 수 있습니까?', W / 2, 300 + i * 70, 44, C.ivory, 'center', KR, 0.02,
+    Math.min(prog(t, l.t, l.t + 0.6), 1 - prog(t, lq.t - 0.8, lq.t - 0.2)) * 0.9));
+  const k = prog(t, l2.t, l2.t + 0.8);
+  txt('인정한 사람', W / 2, 520, 72, C.goldL, 'center', KR, 0.04, k * (1 - prog(t, lq.t - 0.8, lq.t - 0.2)));
+  // 감사의 시작은 인정
+  const kq = prog(t, lq.t, lq.t + 1.6);
+  if (kq > 0) {
+    radial(W / 2, 470, 600, 'rgba(255,215,150,1)', 0.3 * kq);
+    revealTxt('감사의 시작은', W / 2, 400, 72, C.ivory, kq, KR, 0.5, 0.035);
+    ctx.save(); ctx.shadowColor = C.goldL; ctx.shadowBlur = 40 * kq;
+    revealTxt('인정입니다', W / 2, 590, 150, C.goldL, prog(t, lq.t + 0.6, lq.t + 2.2), KR, 0.5, 0.05);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawPath(t, s, gv) {
+  const a = gv * (1 - prog(t, s.e - 0.8, s.e));
+  const dawn = eio(prog(t, s.t, s.e));
+  ctx.save(); ctx.globalAlpha = a;
+  const hz = 600;
+  // 떠오르는 해
+  const sy = hz + 80 - 180 * dawn;
+  radial(W / 2, sy, 700, 'rgba(255,200,120,1)', 0.35 + 0.35 * dawn);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, hz); ctx.clip();
+  ctx.fillStyle = mixc('#e8b878', '#fff0c8', dawn); ctx.shadowColor = C.goldL; ctx.shadowBlur = 60;
+  ctx.beginPath(); ctx.arc(W / 2, sy, 90, 0, TAU); ctx.fill(); ctx.restore();
+  // 언덕 + 길
+  ctx.fillStyle = '#120f18'; ctx.beginPath(); ctx.moveTo(0, hz); for (let x = 0; x <= W; x += 40) ctx.lineTo(x, hz - 30 * Math.sin(x * 0.004) - 18 * Math.sin(x * 0.011 + 1)); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+  const g = ctx.createLinearGradient(0, hz, 0, H); g.addColorStop(0, `rgba(255,220,160,${0.5 + 0.4 * dawn})`); g.addColorStop(1, 'rgba(255,220,160,.08)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(W / 2 - 8, hz - 4); ctx.lineTo(W / 2 + 8, hz - 4); ctx.bezierCurveTo(W / 2 + 120, 760, W / 2 - 160, 860, W / 2 + 240, H); ctx.lineTo(W / 2 - 300, H); ctx.bezierCurveTo(W / 2 - 400, 880, W / 2 + 40, 760, W / 2 - 8, hz - 4); ctx.fill();
+  // 걷는 사람
+  const wk = prog(t, s.t, s.e);
+  person(W / 2 - 160 + 140 * wk, 900 - 200 * wk, 1.4 - 0.7 * wk, '#1d1822', { walk: t * 1.6, face: 1, alpha: 1 });
+  const l2 = L('c15', 2), l4 = L('c15', 4);
+  txt('범사에 그를 인정하고 감사하는 삶', W / 2, 250, 56, C.ivory, 'center', KR, 0.035, prog(t, l2.t + 0.4, l2.t + 1.2));
+  glowTxt('“네 길을 지도하시리라”', W / 2, 340, 64, C.goldL, 24, 'center', KR, 0.04, prog(t, l4.t, l4.t + 1.0));
+  ctx.restore();
+}
+function drawOutro(t, s) {
+  const k = prog(t, s.t, s.t + 1.0);
+  ctx.save(); ctx.globalAlpha = k * (1 - prog(t, DUR - 1.2, DUR - 0.1));
+  radial(W / 2, 470, 700, 'rgba(255,215,150,1)', 0.25);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,228,170,.4)';
+  ctx.fillRect(W / 2 - 1.5, 160, 3, 220); ctx.fillRect(W / 2 - 70, 215, 140, 3); ctx.restore();
+  revealTxt('범사에 그를 인정하라', W / 2, 520, 110, C.goldL, prog(t, s.t + 0.3, s.t + 2.2), KR, 0.6, 0.045);
+  txt('그리하면 네 길을 지도하시리라 (잠언 3:6)', W / 2, 600, 38, C.ivory, 'center', KR, 0.01, prog(t, s.t + 1.6, s.t + 2.6));
+  ctx.fillStyle = C.gold; const lw = 240 * eout(prog(t, s.t + 2.2, s.t + 3.2)); ctx.fillRect(W / 2 - lw, 650, lw * 2, 2);
+  txt('누가복음 17:11-19  ·  김현수 목사', W / 2, 720, 36, C.mist, 'center', KR, 0, prog(t, s.t + 2.6, s.t + 3.6));
+  ctx.restore();
+}
+
+const DRAW = { spencer: drawSpencer, ten: drawTen, go: drawGo, clean: drawClean, nine: drawNine, savior: drawSavior, king: drawKing, moon: drawMoon,
+  admit: drawAdmit, prov: drawProv, tiles: drawTiles, start: drawStart, path: drawPath };
+
+window.renderFrame = function (t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
+  background(t);
+  const s = inScene(t);
+  if (s.id === 'intro') drawIntro(t, s);
+  else if (s.id === 'outro') drawOutro(t, s);
+  else {
+    const gv = chapter(t);
+    ctx.save(); DRAW[s.id](t, s, gv); ctx.restore();
+    // 이웃 장면으로 이어지는 사람들(열 명)이 끊기지 않게: 장면 경계에서도 같은 함수가 그림
+  }
+  subtitle(t);
+  finish(t);
+};
+window.ready = document.fonts.load(`40px ${KR}`).then(() => document.fonts.load(`40px ${SERIF}`));
+</script></body></html>
