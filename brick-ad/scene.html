@@ -1,0 +1,397 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<img id="photo" src="workshop.png" style="display:none">
+<script>
+// 브릭코칭 LAB 15초 광고 — 문제 제기(0–3) → 핵심 기능 3가지(3–12) → 한 줄(12–15)
+const W = 1920, H = 1080, DUR = 15;
+const ctx = document.getElementById('c').getContext('2d');
+const photo = document.getElementById('photo');
+const TAU = Math.PI * 2;
+const FONT = '"WenQuanYi Zen Hei", sans-serif';
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eout = x => 1 - Math.pow(1 - x, 3);
+const ein = x => x * x * x;
+const back = x => { const c1 = 1.8, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+
+// 사이트 브랜드 색상 (styles.css)
+const C = { navy: '#13263f', navy2: '#0b1a2d', yellow: '#ffd51f', red: '#ee4438', blue: '#2183d8', cream: '#f5f3ec', muted: '#8d98ab', white: '#ffffff', green: '#3fb26b' };
+const BRICK_COLORS = [C.yellow, C.red, C.blue, C.green, C.cream];
+
+function shade(hex, k) { // k<0 어둡게, k>0 밝게
+  const v = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${v.map(c => Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k)).join(',')})`;
+}
+function rrect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function circle(x, y, r, fill, stroke, lw) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke(); }
+}
+// 레고 브릭 (정면, 윗면 스터드)
+function brick(x, y, studs, color, u = 56) {
+  const w = studs * u, h = u * 0.9, sr = u * 0.3, sh = u * 0.2;
+  for (let i = 0; i < studs; i++) {
+    const sx = x + u * (i + 0.5) - sr;
+    ctx.fillStyle = shade(color, -0.18); rrect(sx, y - sh, sr * 2, sh + 4, 4); ctx.fill();
+    ctx.fillStyle = shade(color, 0.25); rrect(sx + 3, y - sh, sr * 2 - 10, 5, 2); ctx.fill();
+  }
+  ctx.fillStyle = color; rrect(x, y, w, h, 7); ctx.fill();
+  ctx.fillStyle = shade(color, -0.2); rrect(x, y + h * 0.72, w, h * 0.28, 7); ctx.fill();
+  ctx.fillStyle = shade(color, 0.3); ctx.fillRect(x + 8, y + 6, w - 16, 5);
+}
+function txt(s, x, y, size, color, opts = {}) {
+  ctx.font = `${size}px ${FONT}`; ctx.textAlign = opts.align || 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.lineJoin = 'round';
+  if (opts.bold !== false) { ctx.lineWidth = size * (opts.weight || 0.055); ctx.strokeStyle = color; ctx.strokeText(s, x, y); }
+  ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+// 아래에서 위로 올라오며 나타나는 텍스트 (마스크)
+function revealText(s, x, y, size, color, t, t0, opts = {}) {
+  const k = eout(prog(t, t0, t0 + (opts.dur || 0.45)));
+  if (k <= 0) return;
+  ctx.save();
+  ctx.font = `${size}px ${FONT}`; ctx.textAlign = opts.align || 'left';
+  const m = ctx.measureText(s), w = m.width;
+  const lx = opts.align === 'center' ? x - w / 2 : opts.align === 'right' ? x - w : x;
+  ctx.beginPath(); ctx.rect(lx - 20, y - size * 1.05, w + 40, size * 1.35); ctx.clip();
+  const dy = (1 - k) * size * 1.2;
+  txt(s, x, y + dy, size, color, opts);
+  if (opts.highlight) { // 강조 단어: 색 바꾸고 밑줄
+    const hk = eio(prog(t, t0 + 0.35, t0 + 0.75));
+    const [a, b] = opts.highlight;
+    ctx.font = `${size}px ${FONT}`;
+    const pre = ctx.measureText(s.slice(0, a)).width, seg = ctx.measureText(s.slice(a, b)).width;
+    ctx.save(); ctx.globalAlpha *= hk;
+    txt(s.slice(a, b), lx + pre, y + dy, size, opts.hlColor, { weight: opts.weight });
+    ctx.restore();
+    ctx.fillStyle = opts.hlColor; rrect(lx + pre, y + dy + size * 0.12, seg * hk, size * 0.09, size * 0.045); ctx.fill();
+  }
+  ctx.restore();
+}
+function background(t, top = C.navy, bot = C.navy2) {
+  const g = ctx.createLinearGradient(0, 0, W * 0.3, H);
+  g.addColorStop(0, top); g.addColorStop(1, bot);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 은은한 스터드 패턴
+  ctx.save(); ctx.globalAlpha = 0.05;
+  const off = (t * 20) % 80;
+  for (let y = -80; y < H + 80; y += 80) for (let x = -80; x < W + 80; x += 80) circle(x + off, y + off * 0.5, 16, null, '#fff', 4);
+  ctx.restore();
+}
+
+// ---------- A. 문제 제기 0–3s ----------
+function sceneA(t) {
+  if (t > 3.35) return;
+  background(t);
+  // 엉킨 생각 실타래 (말로만 맴도는 생각)
+  const cx = 1340, cy = 520;
+  const collapse = ein(prog(t, 2.45, 2.95));
+  const grow = eout(prog(t, 0.05, 0.9));
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(t * 0.9);
+  ctx.beginPath();
+  const N = 420;
+  for (let i = 0; i <= N * grow; i++) {
+    const u = i / N * TAU * 6;
+    const r = (190 + 70 * Math.sin(u * 1.7 + t * 2) + 40 * Math.sin(u * 3.3)) * (1 - collapse);
+    const x = Math.cos(u) * r, y = Math.sin(u * 1.03) * r * 0.85;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(160,172,192,.75)'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.restore();
+  // 맴도는 빈 말풍선들
+  for (let i = 0; i < 4; i++) {
+    const a = i / 4 * TAU + t * 1.6;
+    const rr = 330 * (1 - collapse);
+    const bx = cx + Math.cos(a) * rr, by = cy + Math.sin(a) * rr * 0.75;
+    const s = back(prog(t, 0.2 + i * 0.12, 0.55 + i * 0.12)) * (1 - collapse);
+    if (s <= 0) continue;
+    ctx.save(); ctx.translate(bx, by); ctx.scale(s, s);
+    ctx.fillStyle = '#2b3f5c'; rrect(-75, -48, 150, 96, 30); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-20, 44); ctx.lineTo(-40, 80); ctx.lineTo(10, 46); ctx.fill();
+    for (let d = 0; d < 3; d++) circle(-34 + d * 34, 0, 9, d <= Math.floor(t * 4) % 3 ? '#9fb0c8' : '#4b5f7d');
+    ctx.restore();
+  }
+  // 수축 → 노란 브릭 하나 (전환 예고)
+  const bk = back(prog(t, 2.85, 3.15));
+  if (bk > 0) { ctx.save(); ctx.translate(cx, cy); ctx.scale(bk, bk); brick(-56, -25, 2, C.yellow); ctx.restore(); }
+
+  ctx.save(); ctx.globalAlpha = 1 - prog(t, 2.75, 3.0);
+  revealText('말로만 맴도는 생각,', 150, 470, 92, C.white, t, 0.3);
+  revealText('대화가 멈춰 있나요?', 150, 600, 92, C.white, t, 1.0, { highlight: [4, 6] , hlColor: C.red});
+  ctx.restore();
+}
+
+// ---------- B. 핵심 기능 3가지 3–12s ----------
+const FEATS = [
+  { n: '01', title: '만들기', sub: '생각을 손으로, 눈앞에 보이게', color: C.yellow },
+  { n: '02', title: '나누기', sub: '모델로 열리는 깊은 대화', color: C.red },
+  { n: '03', title: '성찰하기', sub: '통찰을 실천 계획으로', color: C.blue },
+];
+function featureText(t, i, t0) {
+  const f = FEATS[i];
+  const x = 1060;
+  const out = ein(prog(t, t0 + 2.75, t0 + 3.0));
+  ctx.save(); ctx.globalAlpha = 1 - out; ctx.translate(-out * 80, 0);
+  // 번호 배지 (브릭 모양)
+  const bk = back(prog(t, t0 + 0.05, t0 + 0.45));
+  if (bk > 0) {
+    ctx.save(); ctx.translate(x + 90, 330); ctx.scale(bk, bk);
+    brick(-90, -50, 3, f.color, 60);
+    txt(f.n, 0, -4, 50, i === 0 ? C.navy : C.white, { align: 'center' });
+    ctx.restore();
+  }
+  revealText(f.title, x, 530, 150, C.white, t, t0 + 0.2, { weight: 0.06 });
+  revealText(f.sub, x, 650, 62, '#c9d3e2', t, t0 + 0.5, { weight: 0.035 });
+  // 밑줄
+  const ul = eio(prog(t, t0 + 0.7, t0 + 1.2));
+  ctx.fillStyle = f.color; rrect(x, 700, 160 * ul, 12, 6); ctx.fill();
+  ctx.restore();
+}
+function progressBar(t) {
+  // 3단계 진행 표시
+  const a = prog(t, 3.0, 3.3) * (1 - prog(t, 11.8, 12.0));
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a;
+  for (let i = 0; i < 3; i++) {
+    const x = 1060 + i * 150, y = 900;
+    const on = t >= 3 + i * 3;
+    const k = prog(t, 3 + i * 3, 3.4 + i * 3);
+    ctx.fillStyle = 'rgba(255,255,255,.15)'; rrect(x, y, 120, 14, 7); ctx.fill();
+    if (on) { ctx.fillStyle = FEATS[i].color; rrect(x, y, 120 * k, 14, 7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+// 01 만들기: 생각 구름 안으로 브릭이 날아와 모델 완성
+function vis1(t, t0) {
+  const lt = t - t0, cx = 520, base = 820;
+  const out = ein(prog(t, t0 + 2.75, t0 + 3.0));
+  ctx.save(); ctx.globalAlpha = 1 - out; ctx.translate(-out * 120, 0);
+  // 생각 구름 윤곽 (점선)
+  const ck = eout(prog(lt, 0.0, 0.6));
+  ctx.save(); ctx.setLineDash([22, 18]); ctx.lineDashOffset = -t * 40; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,213,31,.55)';
+  ctx.beginPath();
+  const bumps = 9;
+  for (let i = 0; i <= 160 * ck; i++) {
+    const u = i / 160 * TAU;
+    const r = 330 + 26 * Math.sin(u * bumps);
+    const x = cx + Math.cos(u - Math.PI / 2) * r * 1.05, y = 560 + Math.sin(u - Math.PI / 2) * r * 0.9;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke(); ctx.restore();
+  // 브릭 쌓기
+  const plan = [
+    [-2.5, 0, 5, C.green], [-2, 1, 2, C.blue], [0.5, 1, 2, C.red], [-1.5, 2, 3, C.yellow],
+    [-1, 3, 2, C.blue], [-0.5, 4, 1, C.red], [-1, 5, 2, C.yellow],
+  ];
+  const u = 56;
+  plan.forEach(([sx, row, studs, col], j) => {
+    const st = 0.35 + j * 0.24;
+    const k = prog(lt, st, st + 0.32);
+    if (k <= 0) return;
+    const y = base - row * u * 0.9 - u * 0.9;
+    const from = j % 2 ? 1 : -1;
+    const x = cx + sx * u + (1 - eout(k)) * from * 500;
+    const yy = y - (1 - eout(k)) * 260 + (k >= 1 ? Math.sin(prog(lt, st + 0.32, st + 0.5) * Math.PI) * -10 : 0);
+    ctx.save(); ctx.translate(x + studs * u / 2, yy); ctx.rotate((1 - eout(k)) * from * 0.6); ctx.translate(-(x + studs * u / 2), -yy);
+    brick(x, yy, studs, col, u);
+    ctx.restore();
+  });
+  // 깃발
+  const fk = back(prog(lt, 2.15, 2.45));
+  if (fk > 0) {
+    const fx = cx - u * 0.5 + u, fy = base - 6 * u * 0.9 - 12;
+    ctx.fillStyle = C.cream; ctx.fillRect(fx - 3, fy - 130 * fk, 6, 130 * fk);
+    ctx.fillStyle = C.red; ctx.beginPath(); ctx.moveTo(fx + 3, fy - 130 * fk); ctx.lineTo(fx + 3 + 70 * fk, fy - 108 * fk + Math.sin(t * 8) * 4); ctx.lineTo(fx + 3, fy - 86 * fk); ctx.fill();
+  }
+  // 바닥판
+  ctx.fillStyle = shade(C.green, -0.35); rrect(cx - 220, base, 440, 22, 8); ctx.fill();
+  // 반짝
+  const sp = prog(lt, 2.3, 2.75);
+  if (sp > 0 && sp < 1) for (let j = 0; j < 10; j++) {
+    const a = j / 10 * TAU, r0 = 120 + sp * 230;
+    ctx.save(); ctx.globalAlpha *= 1 - sp; ctx.strokeStyle = C.yellow; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, 520 + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * (r0 + 40), 520 + Math.sin(a) * (r0 + 40)); ctx.stroke(); ctx.restore();
+  }
+  ctx.restore();
+}
+// 02 나누기: 테이블 위 세 사람의 모델 + 연결되는 대화
+function person(x, y, s, col) {
+  circle(x, y - 70 * s, 38 * s, '#f1c9a5');
+  ctx.fillStyle = col; rrect(x - 62 * s, y - 28 * s, 124 * s, 110 * s, 44 * s); ctx.fill();
+}
+function vis2(t, t0) {
+  const lt = t - t0;
+  const inK = eout(prog(lt, -0.1, 0.35));
+  const out = ein(prog(t, t0 + 2.75, t0 + 3.0));
+  ctx.save(); ctx.globalAlpha = (1 - out) * inK; ctx.translate(-out * 120 + (1 - inK) * -120, 0);
+  const cx = 520, cy = 600;
+  const seats = [{ x: cx, y: cy - 250, c: C.yellow }, { x: cx - 300, y: cy + 150, c: C.red }, { x: cx + 300, y: cy + 150, c: C.blue }];
+  // 테이블
+  ctx.fillStyle = '#20385a'; ctx.beginPath(); ctx.ellipse(cx, cy + 20, 360, 200, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 6; ctx.stroke();
+  // 연결선 (공동의 언어)
+  const link = prog(lt, 1.3, 2.0);
+  if (link > 0) {
+    ctx.save(); ctx.setLineDash([18, 14]); ctx.lineDashOffset = -t * 50; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,213,31,.8)';
+    for (let i = 0; i < 3; i++) {
+      const a = seats[i], b = seats[(i + 1) % 3];
+      const ax = lerp(a.x, cx, 0.45), ay = lerp(a.y, cy, 0.45), bx = lerp(b.x, cx, 0.45), by = lerp(b.y, cy, 0.45);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(lerp(ax, bx, link), lerp(ay, by, link)); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  seats.forEach((s, i) => {
+    const pk = back(prog(lt, 0.1 + i * 0.12, 0.45 + i * 0.12));
+    if (pk <= 0) return;
+    // 사람
+    const px = lerp(s.x, cx, -0.12), py = lerp(s.y, cy, -0.12) + (i === 0 ? 0 : 40);
+    ctx.save(); ctx.translate(px, py); ctx.scale(pk, pk); person(0, 0, 0.9, s.c); ctx.restore();
+    // 각자의 미니 모델
+    const mk = back(prog(lt, 0.45 + i * 0.15, 0.75 + i * 0.15));
+    if (mk > 0) {
+      const mx = lerp(s.x, cx, 0.45), my = lerp(s.y, cy, 0.45);
+      ctx.save(); ctx.translate(mx, my); ctx.scale(mk * 0.55, mk * 0.55);
+      brick(-56, 0, 2, BRICK_COLORS[(i + 1) % 5], 56); brick(-28, -50, 1, s.c, 56); if (i !== 1) brick(-56, -100, 2, BRICK_COLORS[(i + 2) % 3], 56);
+      ctx.restore();
+    }
+    // 말풍선 — 차례로 이야기
+    const bt = 0.9 + i * 0.35;
+    const bkk = back(prog(lt, bt, bt + 0.3)) * (1 - prog(lt, bt + 1.2, bt + 1.45));
+    if (bkk > 0) {
+      const bx = px + (i === 2 ? 120 : i === 1 ? -120 : 150), by = py - 150;
+      ctx.save(); ctx.translate(bx, by); ctx.scale(bkk, bkk);
+      ctx.fillStyle = C.cream; rrect(-70, -42, 140, 84, 28); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-14 * (i === 1 ? -1 : 1), 38); ctx.lineTo(-40 * (i === 1 ? -1 : 1), 72); ctx.lineTo(16 * (i === 1 ? -1 : 1), 40); ctx.fill();
+      for (let d = 0; d < 3; d++) circle(-32 + d * 32, 0, 9, s.c);
+      ctx.restore();
+    }
+  });
+  // 가운데 하트/전구 대신 노란 공유 브릭
+  const ck = back(prog(lt, 1.9, 2.25));
+  if (ck > 0) { ctx.save(); ctx.translate(cx, cy + 10); ctx.scale(ck, ck); brick(-84, -25, 3, C.yellow, 56); ctx.restore(); }
+  ctx.restore();
+}
+// 03 성찰하기: 계단처럼 쌓여 올라가는 브릭 + 위로 향하는 화살표
+function vis3(t, t0) {
+  const lt = t - t0;
+  const out = ein(prog(t, t0 + 2.8, t0 + 3.0));
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  const u = 60, x0 = 200, base = 860;
+  const steps = 5;
+  for (let s = 0; s < steps; s++) {
+    for (let h = 0; h <= s; h++) {
+      const st = 0.15 + s * 0.22 + h * 0.04;
+      const k = prog(lt, st, st + 0.28);
+      if (k <= 0) continue;
+      const x = x0 + s * u * 2, y = base - (h + 1) * u * 0.9;
+      brick(x, y - (1 - eout(k)) * 300, 2, [C.blue, C.yellow, C.red, C.green, C.blue][s], u);
+    }
+  }
+  // 오르는 사람(미니피겨 실루엣)
+  const climb = eio(prog(lt, 1.3, 2.3));
+  if (lt > 1.2) {
+    const pos = climb * (steps - 1);
+    const s = Math.floor(pos), f = pos - s;
+    const x = x0 + (s + f) * u * 2 + u;
+    const y = base - (s + 1) * u * 0.9 - (f > 0 ? Math.sin(f * Math.PI) * 50 + f * u * 0.9 : 0) - 26;
+    ctx.save(); ctx.translate(x, y);
+    circle(0, -78, 22, '#ffd51f');
+    ctx.fillStyle = C.red; rrect(-24, -56, 48, 44, 8); ctx.fill();
+    ctx.fillStyle = C.cream; rrect(-22, -14, 20, 30, 4); ctx.fill(); rrect(2, -14, 20, 30, 4); ctx.fill();
+    ctx.restore();
+  }
+  // 상승 화살표
+  const ak = eout(prog(lt, 2.0, 2.5));
+  if (ak > 0) {
+    ctx.save(); ctx.strokeStyle = C.yellow; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const ax0 = x0 + 40, ay0 = base - 120, ax1 = x0 + steps * u * 2 + 40, ay1 = base - steps * u * 0.9 - 260;
+    const ex = lerp(ax0, ax1, ak), ey = lerp(ay0, ay1, ak);
+    ctx.beginPath(); ctx.moveTo(ax0, ay0 - 140); ctx.quadraticCurveTo(lerp(ax0, ax1, 0.5), ay0 - 160, ex, ey - 0); ctx.globalAlpha *= 0.9;
+    ctx.stroke();
+    const ang = Math.atan2(ay1 - (ay0 - 160), ax1 - lerp(ax0, ax1, 0.5));
+    ctx.translate(ex, ey); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(-34, -26); ctx.lineTo(4, 0); ctx.lineTo(-34, 26); ctx.stroke();
+    ctx.restore();
+  }
+  // 체크
+  const ck = prog(lt, 2.35, 2.65);
+  if (ck > 0) {
+    const x = x0 + steps * u * 2 + 60, y = base - steps * u * 0.9 - 150;
+    circle(x, y, 56 * back(ck), C.green);
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(x - 24, y); ctx.lineTo(x - 6, y + 20); ctx.lineTo(x + 26, y - 18); ctx.globalAlpha *= clamp(ck * 2); ctx.stroke(); ctx.restore();
+  }
+  ctx.restore();
+}
+function sceneB(t) {
+  if (t < 2.95 || t > 12.4) return;
+  background(t);
+  if (t < 6.05) { vis1(t, 3.0); featureText(t, 0, 3.0); }
+  if (t > 5.9 && t < 9.05) { vis2(t, 6.0); featureText(t, 1, 6.0); }
+  if (t > 8.9 && t < 12.05) { vis3(t, 9.0); featureText(t, 2, 9.0); }
+  progressBar(t);
+}
+
+// ---------- C. 한 줄 12–15s ----------
+function sceneC(t) {
+  if (t < 11.85) return;
+  const lt = t - 12;
+  // 사진 + 네이비 오버레이 (켄 번스)
+  const z = 1.08 + lt * 0.03;
+  const iw = W * z, ih = iw * photo.naturalHeight / photo.naturalWidth;
+  ctx.drawImage(photo, (W - iw) / 2 + lt * -10, (H - ih) / 2, iw, ih);
+  ctx.fillStyle = 'rgba(11,26,45,.78)'; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(19,38,63,0)'); g.addColorStop(1, 'rgba(11,26,45,.85)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  revealText('생각을 손으로 만들면,', W / 2, 430, 104, C.white, t, 12.2, { align: 'center' });
+  revealText('대화가 움직입니다.', W / 2, 570, 104, C.white, t, 12.55, { align: 'center', highlight: [0, 3] , hlColor: C.yellow});
+  // 로고 (파비콘 모양 + 이름)
+  const lk = back(prog(t, 13.3, 13.7));
+  if (lk > 0) {
+    ctx.save(); ctx.translate(W / 2, 790); ctx.scale(lk, lk);
+    const iconX = -230;
+    ctx.fillStyle = C.navy; rrect(iconX - 50, -50, 100, 100, 22); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = C.yellow; rrect(iconX - 30, -16, 60, 44, 9); ctx.fill();
+    circle(iconX - 14, -18, 9, C.yellow); circle(iconX + 14, -18, 9, C.yellow);
+    txt('브릭코칭', iconX + 80, 26, 72, C.white);
+    ctx.font = `72px ${FONT}`; const bw = ctx.measureText('브릭코칭').width;
+    txt('LAB', iconX + 100 + bw, 26, 72, C.yellow);
+    ctx.restore();
+  }
+  ctx.save(); ctx.globalAlpha = prog(t, 13.7, 14.1);
+  txt('레고 기반 실습형 코칭 교육', W / 2, 900, 40, '#c9d3e2', { align: 'center', weight: 0.02 });
+  ctx.restore();
+}
+
+// 장면 전환: 브릭 줄이 화면을 덮었다 걷힘
+function wipe(t, at) {
+  const k = prog(t, at - 0.35, at + 0.35);
+  if (k <= 0 || k >= 1) return;
+  const rows = 8, rh = H / rows;
+  for (let r = 0; r < rows; r++) {
+    const d = r * 0.04;
+    const p = clamp((k - d) / (1 - 0.28));
+    const inK = eio(clamp(p * 2)), outK = eio(clamp(p * 2 - 1));
+    const x0 = lerp(-W - 200, 0, inK) + lerp(0, W + 200, outK);
+    const col = BRICK_COLORS[r % 3];
+    ctx.fillStyle = col; ctx.fillRect(x0, r * rh - 1, W + 40, rh + 2);
+    ctx.fillStyle = shade(col, -0.2); ctx.fillRect(x0, r * rh + rh * 0.75, W + 40, rh * 0.25);
+    for (let s = 0; s < 14; s++) circle(x0 + 70 + s * 140, r * rh + rh * 0.38, 26, shade(col, 0.15));
+  }
+}
+
+window.renderFrame = function (t) {
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  if (t < 3.0) sceneA(t); else if (t < 12.0) sceneB(t); else sceneC(t);
+  wipe(t, 3.0); wipe(t, 12.0);
+};
+window.ready = Promise.all([document.fonts.load(`72px ${FONT}`), photo.decode()]);
+</script></body></html>
