@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const FPS = 30, DUR = 30;
+const FPS = 30, DUR = 40;
 const dir = __dirname;
 
 (async () => {

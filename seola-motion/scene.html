@@ -3,7 +3,7 @@
 <body><canvas id="c" width="1920" height="1080"></canvas>
 <script src="timeline.js"></script>
 <script>
-// 설아의 초록빛 하루 — 30초 유튜브 모션그래픽
+// 설아의 초록빛 나들이 — 40초 유튜브 모션그래픽
 const W = 1920, H = 1080, FPS = 30, DUR = TL.dur;
 const ctx = document.getElementById('c').getContext('2d');
 const TAU = Math.PI * 2;
@@ -43,7 +43,7 @@ function heart(x, y, s, color) {
 }
 
 // ---------- 배경: 봄 공원 그라디언트 + 흩날리는 잎 ----------
-const BG = { intro: ['#dff7e6', '#fff3c4'], grand: ['#e6f6ff', '#e3f9e8'], teacher: ['#fff0f6', '#e6f6ff'], nature: ['#e3f9e8', '#fffbe0'], finale: ['#ffe8f3', '#e2f8e6'] };
+const BG = { intro: ['#dff7e6', '#fff3c4'], res1: ['#e0f3ff', '#e3f9e8'], res2: ['#e6f6ff', '#fff0f6'], park1: ['#e3f9e8', '#fff6d0'], park2: ['#e3f9e8', '#fffbe0'], finale: ['#ffe8f3', '#e2f8e6'] };
 function background(t, id) {
   const [a, b] = BG[id];
   const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, a); g.addColorStop(1, b); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -163,87 +163,138 @@ async function vframe(sec) {
 }
 
 // ================= 장면 =================
+// 지도 핀
+function pin(x, y, s, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 6;
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, -46, 34, Math.PI, 0); ctx.quadraticCurveTo(34, -16, 0, 0); ctx.quadraticCurveTo(-34, -16, -34, -46); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, -46, 13, 0, TAU); ctx.fill(); ctx.restore();
+}
+// 장소 이름: 가운데서 크게 튀어나왔다가 오른쪽 위로 자리 잡음
+function placeTag(t, t0, name, color, end) {
+  const k = prog(t, t0, t0 + 0.4), dock = eio(prog(t, t0 + 1.3, t0 + 1.8)), out = prog(t, end - 0.45, end - 0.1);
+  if (k <= 0 || out >= 1) return;
+  const x = lerp(W / 2, W - 300, dock), y = lerp(H / 2 - 20, 70, dock), sc = lerp(1, 0.5, dock) * back(k);
+  ctx.save(); ctx.globalAlpha = 1 - out; ctx.translate(x, y); ctx.scale(sc, sc); ctx.rotate(Math.sin(t * 2.2) * 0.015);
+  if (dock < 1) { ctx.save(); ctx.globalAlpha *= (1 - dock) * 0.9; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillRect(-W, -H, W * 2, H * 2); ctx.restore(); }
+  ctx.font = `92px ${KR}`; const w = ctx.measureText(name).width + 220;
+  ctx.shadowColor = 'rgba(0,0,0,.18)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10; ctx.fillStyle = '#fff'; rrect(-w / 2, -80, w, 160, 80); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = color; ctx.lineWidth = 8; rrect(-w / 2, -80, w, 160, 80); ctx.stroke();
+  pin(-w / 2 + 92, 48, 1.15, color);
+  txt(name, 46, 32, 92, color, 'center', null, 0, 0.05);
+  ctx.restore();
+}
+function ripples(t, x, y, k) {
+  for (let i = 0; i < 4; i++) {
+    const p = (t * 0.5 + i / 4) % 1;
+    ctx.save(); ctx.globalAlpha = k * (1 - p) * 0.6; ctx.strokeStyle = '#7cc8ff'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.ellipse(x, y, 40 + p * 220, (40 + p * 220) * 0.28, 0, 0, TAU); ctx.stroke(); ctx.restore();
+  }
+}
 async function sIntro(t) {
-  const sc = scene('intro');
-  const im = await vframe(t + 1.0);
-  card(im, 1480, 520, 380, 676, 0.07 + Math.sin(t * 1.2) * 0.01, prog(t, 0.15, 0.6), 0, { tape: 'rgba(255,211,77,.9)' });
-  card(PH.p7, 430, 560, 380, 506, -0.08 + Math.sin(t) * 0.01, prog(t, 0.35, 0.8), prog(t, 0, 4.3), { tape: 'rgba(124,200,255,.85)' });
+  const im = await vframe(20 + t);
+  card(im, 1500, 520, 380, 676, 0.07 + Math.sin(t * 1.2) * 0.01, prog(t, 0.15, 0.6), 0, { tape: 'rgba(255,211,77,.9)' });
+  card(PH.p6, 420, 540, 400, 533, -0.08 + Math.sin(t) * 0.01, prog(t, 0.35, 0.8), prog(t, 0, 5.2), { tape: 'rgba(124,200,255,.85)', panY: -0.1 });
   bounceTitle(t, 0.5, '설아의', 420, 110);
-  bounceTitle(t, 0.85, '초록빛 하루', 600, 170);
-  const k = prog(t, 1.8, 2.3);
-  if (k > 0) { ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = '#fff'; rrect(W / 2 - 230, 660, 460, 80, 40); ctx.fill(); txt('충신유치원 🌿', W / 2, 716, 44, C.leafD, 'center', null, 0, 0.04); ctx.restore(); }
+  bounceTitle(t, 0.85, '초록빛 나들이', 600, 160);
+  const k = prog(t, 2.0, 2.5);
+  if (k > 0) { ctx.save(); ctx.globalAlpha = k; ctx.translate(W / 2, 700); ctx.scale(back(k), back(k)); ctx.fillStyle = '#fff'; rrect(-300, -42, 600, 84, 42); ctx.fill(); txt('👴 할아버지 · 할머니와 함께 👵', 0, 16, 42, C.leafD, 'center', null, 0, 0.04); ctx.restore(); }
   confetti(t, 0.9, 120, 3);
 }
-function sGrand(t) {
-  const sc = scene('grand'), l = line('n02');
-  const x1 = lerp(-500, 640, eout(prog(t, sc.t + 0.15, sc.t + 0.75))), x2 = lerp(W + 500, 1290, eout(prog(t, sc.t + 0.5, sc.t + 1.1)));
-  const k1 = inout(t, sc.t + 0.1, sc.e), k2 = inout(t, sc.t + 0.45, sc.e);
-  card(PH.p6, x1, 455, 510, 680, -0.06 + Math.sin(t * 0.9) * 0.01, k1, prog(t, sc.t, sc.e), { panY: lerp(-0.2, 0.15, prog(t, sc.t, sc.e)), label: '할아버지와 함께', tape: 'rgba(124,200,255,.85)', noPop: true });
-  card(PH.p9, x2, 455, 510, 680, 0.05 + Math.sin(t * 0.8) * 0.01, k2, prog(t, sc.t, sc.e), { panY: 0.1, label: '할머니와 함께', tape: 'rgba(255,126,182,.85)', noPop: true });
-  // 손 잡은 하트가 두 카드 사이에 퐁퐁
-  for (let i = 0; i < 8; i++) {
-    const st = l.t + 0.8 + i * 0.3, d = t - st; if (d < 0 || d > 1.4) continue;
-    ctx.save(); ctx.globalAlpha = 1 - d / 1.4; heart(965 + Math.sin(i * 2.3) * 50 + d * (rnd(i) - 0.5) * 220, 520 - d * 300, 54 + rnd(i) * 26, POP[i % 5]); ctx.restore();
+function sRes1(t) {
+  const sc = scene('res1'), l = line('n02'), p = prog(t, sc.t, sc.e);
+  const k = inout(t, sc.t + 0.9, sc.e);
+  ripples(t, 1350, 760, k);
+  card(PH.p6, lerp(-400, 760, eout(prog(t, sc.t + 0.9, sc.t + 1.5))), 450, 560, 746, -0.04 + Math.sin(t * 0.9) * 0.01, k, p, { panY: lerp(-0.25, 0.2, p), label: '할아버지 손 꼭 잡고', tape: 'rgba(124,200,255,.85)', noPop: true });
+  // 손잡은 하트가 오른쪽으로 걸어가듯 통통
+  for (let i = 0; i < 9; i++) {
+    const st = l.t + 1.6 + i * 0.28, d = t - st; if (d < 0 || d > 1.5) continue;
+    ctx.save(); ctx.globalAlpha = 1 - d / 1.5; heart(1180 + i * 60 + d * 80, 560 - Math.abs(Math.sin(d * 5)) * 90 - d * 120, 52, POP[i % 5]); ctx.restore();
   }
-  chip(t, sc, '👴', '할아버지 · 할머니와', '#3fa9f5');
+  const fk = prog(t, l.t + 1.8, l.t + 2.3);
+  if (fk > 0) { ctx.save(); ctx.globalAlpha = fk * (1 - prog(t, sc.e - 0.4, sc.e - 0.1)); txt('👣  사뿐사뿐', 1420, 420, 64, C.leafD, 'center', '#fff', 0.18, 0.05); ctx.restore(); }
+  placeTag(t, sc.t + 0.05, '양주 기산 저수지', '#3fa9f5', scene('res2').e);
 }
-function sTeacher(t) {
-  const sc = scene('teacher'), l = line('n03'), k = inout(t, sc.t + 0.1, sc.e);
-  const p = prog(t, sc.t, sc.e);
-  card(PH.p10, 820, 450, 960, 720, -0.025 + Math.sin(t * 0.8) * 0.006, k, p, { panX: lerp(0.15, -0.1, p), label: '송은영 원장 선생님과 함께', tape: 'rgba(255,211,77,.9)' });
-  // 오른쪽: 안전해요 / 재미있어요 배지
-  const badge = (t0, y, icon, s, color) => {
-    const kk = prog(t, t0, t0 + 0.4); if (kk <= 0) return;
-    ctx.save(); ctx.globalAlpha = 1 - prog(t, sc.e - 0.4, sc.e - 0.1); ctx.translate(1620, y); const sc2 = back(kk) * (1 + 0.025 * Math.sin(t * 5 + y)); ctx.scale(sc2, sc2);
-    ctx.shadowColor = 'rgba(0,0,0,.15)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8; ctx.fillStyle = '#fff'; rrect(-210, -80, 440, 160, 40); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(-120, 0, 52, 0, TAU); ctx.fill();
-    txt(icon, -120, 20, 54, '#fff', 'center', null, 0, 0); txt(s, -48, 20, 52, color, 'left', null, 0, 0.05);
+function sRes2(t) {
+  const sc = scene('res2'), l = line('n03'), p = prog(t, sc.t, sc.e);
+  const k1 = inout(t, sc.t + 0.1, sc.e), k2 = inout(t, l.t + 1.9, sc.e);
+  card(PH.p9, lerp(-400, 560, eout(prog(t, sc.t + 0.05, sc.t + 0.6))), 455, 500, 666, -0.05 + Math.sin(t * 0.8) * 0.01, k1, p, { panY: 0.15, label: '할머니 품에서 까르르', tape: 'rgba(255,126,182,.85)', noPop: true });
+  card(PH.p10, 1340, 430, 640, 480, 0.04 + Math.sin(t * 0.9) * 0.008, k2, p, { label: '송은영 원장 선생님과 함께', tape: 'rgba(255,211,77,.9)' });
+  for (let i = 0; i < 6; i++) {
+    const st = l.t + 0.5 + i * 0.25, d = t - st; if (d < 0 || d > 1.3) continue;
+    ctx.save(); ctx.globalAlpha = 1 - d / 1.3; txt(['하', '하', '호', '호', '♪', '♥'][i], 860 + i * 40, 300 - d * 200, 60, POP[i % 5], 'center', '#fff', 0.18, 0.05); ctx.restore();
+  }
+  sparkles(t, 1340, 420, 380, k2 * 0.8);
+}
+async function sPark1(t) {
+  const sc = scene('park1'), l = line('n04');
+  // 저수지 → 조각공원 이동 경로
+  const rk = prog(t, sc.t + 0.1, sc.t + 1.4), rOut = prog(t, sc.t + 1.6, sc.t + 2.0);
+  if (rOut < 1) {
+    ctx.save(); ctx.globalAlpha = 1 - rOut;
+    const ax = 460, ay = 640, bx = 1460, by = 420;
+    ctx.setLineDash([22, 18]); ctx.lineWidth = 10; ctx.strokeStyle = '#ffb03b'; ctx.lineCap = 'round';
+    ctx.beginPath(); for (let i = 0; i <= 40 * rk; i++) { const q = i / 40, x = lerp(ax, bx, q), y = lerp(ay, by, q) - Math.sin(q * Math.PI) * 220; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); ctx.setLineDash([]);
+    pin(ax, ay, 1.3, '#3fa9f5'); txt('기산 저수지', ax, ay + 70, 46, '#3fa9f5', 'center', '#fff', 0.2, 0.05);
+    const q = eio(rk), cx = lerp(ax, bx, q), cy = lerp(ay, by, q) - Math.sin(q * Math.PI) * 220;
+    ctx.save(); ctx.translate(cx, cy - 10); ctx.scale(-1, 1); txt('🚗', 0, 0, 90, '#000', 'center', null, 0, 0); ctx.restore();
+    if (rk >= 1) { const pk = back(prog(t, sc.t + 1.4, sc.t + 1.7)); ctx.save(); ctx.translate(bx, by); ctx.scale(pk, pk); pin(0, 0, 1.3, '#4cc35d'); ctx.restore(); txt('장흥 조각공원', bx, by + 70, 46, '#2f8f4a', 'center', '#fff', 0.2, 0.05); }
     ctx.restore();
-  };
-  badge(l.t + 2.3, 380, '🛡️', '안전해요', '#3fa9f5');
-  badge(l.t + 3.4, 600, '😄', '재미있어요', '#ff5fa2');
-  sparkles(t, 820, 430, 560, k * 0.8);
-  chip(t, sc, '🏫', '원장 선생님과', '#ffb03b');
+  }
+  const k = inout(t, sc.t + 1.9, sc.e);
+  const im = await vframe(t - sc.t - 1.9 + 0.5);
+  card(im, 980, 470, 430, 764, Math.sin(t * 1.6) * 0.015, k, 0, { tape: 'rgba(198,232,107,.95)' });
+  // 뛰노는 리듬: 양옆에서 통통 튀는 아이콘
+  const ik = prog(t, l.t + 0.8, l.t + 1.2) * (1 - prog(t, sc.e - 0.4, sc.e - 0.1));
+  if (ik > 0) ['🏃‍♀️', '🌳', '🌼', '🦋'].forEach((e, i) => {
+    const x = i < 2 ? 380 + i * 170 : 1420 + (i - 2) * 170, y = 520 - Math.abs(Math.sin(t * 4 + i)) * 110;
+    ctx.save(); ctx.globalAlpha = ik; txt(e, x, y, 110, '#000', 'center', null, 0, 0); ctx.restore();
+  });
+  const pk = prog(t, l.t + 2.2, l.t + 2.6);
+  if (pk > 0) { ctx.save(); ctx.globalAlpha = 1 - prog(t, sc.e - 0.4, sc.e - 0.1); pill(t, l.t + 2.2, '신나게 뛰어놀아요!', 980, 120, '#ff5fa2'); ctx.restore(); }
+  if (t > sc.t + 1.7) placeTag(t, sc.t + 1.7, '장흥 조각공원', '#2f8f4a', scene('park2').e);
 }
-async function sNature(t) {
-  const sc = scene('nature'), l = line('n04');
-  const mid = sc.t + 3.6;  // 풀잎 → 그림 전시
+function sPark2(t) {
+  const sc = scene('park2'), l = line('n05');
+  const mid = sc.t + 3.4;
   const kA = inout(t, sc.t + 0.1, mid + 0.35), kB = inout(t, mid, sc.e);
   card(PH.p7, lerp(760, 260, eio(prog(t, mid - 0.3, mid + 0.4))), 470, 480, 640, -0.05, kA, prog(t, sc.t, mid + 0.4), { panY: 0.25, tape: 'rgba(198,232,107,.95)', label: '풀잎을 만져 보고' });
-  card(PH.p8, lerp(W + 400, 1150, eout(prog(t, mid, mid + 0.6))), 460, 820, 615, 0.04, kB, prog(t, mid, sc.e), { panX: -0.2, tape: 'rgba(255,126,182,.88)', label: '그림도 보면서', noPop: true });
-  // 돋보기로 들여다보는 느낌의 잎사귀
+  card(PH.p8, lerp(W + 400, 1150, eout(prog(t, mid, mid + 0.6))), 460, 820, 615, 0.04, kB, prog(t, mid, sc.e), { panX: -0.2, tape: 'rgba(255,126,182,.88)', label: '그림도 구경하며', noPop: true });
   const kk = prog(t, sc.t + 0.8, sc.t + 1.3) * (1 - prog(t, mid - 0.2, mid + 0.2));
-  if (kk > 0) for (let i = 0; i < 5; i++) { ctx.save(); ctx.globalAlpha = kk; leaf(1200 + i * 120, 330 + Math.sin(t * 2 + i) * 30 + (i % 2) * 120, 50, Math.sin(t + i) * 0.5 + i, POP[i % 5] === '#ff5fa2' ? C.leaf : '#8ad86a'); ctx.restore(); }
-  const out = 1 - prog(t, sc.e - 0.45, sc.e - 0.1);
-  ctx.save(); ctx.globalAlpha = out;
-  pill(t, l.t + 3.4, '배우고 📚', 360, 300, '#4cc35d');
-  pill(t, l.t + 3.8, '느끼고 💚', 360, 470, '#3fa9f5');
-  pill(t, l.t + 4.2, '행복해요 ☀️', 360, 640, '#ffb03b');
+  if (kk > 0) for (let i = 0; i < 5; i++) { ctx.save(); ctx.globalAlpha = kk; leaf(1200 + i * 120, 330 + Math.sin(t * 2 + i) * 30 + (i % 2) * 120, 50, Math.sin(t + i) * 0.5 + i, i % 2 ? C.leaf : '#8ad86a'); ctx.restore(); }
+  ctx.save(); ctx.globalAlpha = 1 - prog(t, sc.e - 0.45, sc.e - 0.1);
+  pill(t, l.t + 3.2, '배우고 📚', 360, 300, '#4cc35d');
+  pill(t, l.t + 3.6, '느끼고 💚', 360, 470, '#3fa9f5');
+  pill(t, l.t + 4.0, '뛰놀아요 ☀️', 360, 640, '#ffb03b');
   ctx.restore();
-  chip(t, sc, '🌿', '자연에서 배워요', '#4cc35d');
+  chip(t, sc, '🌿', '자연 속에서', '#4cc35d');
 }
 async function sFinale(t) {
-  const sc = scene('finale'), l = line('n05');
-  const im = await vframe(8 + (t - sc.t) * 1.0);
+  const sc = scene('finale'), l = line('n06');
+  const im = await vframe(12 + (t - sc.t));
   const k = inout(t, sc.t + 0.05, sc.e + 1);
-  // 영상 카드 + 양옆 미니 사진
-  card(PH.p6, 330, 520, 300, 400, -0.1 + Math.sin(t) * 0.02, prog(t, sc.t + 0.5, sc.t + 0.9), 0, { pad: 12, bottom: 12, tape: 'rgba(124,200,255,.85)' });
-  card(PH.p10, 1600, 400, 380, 285, 0.09 + Math.sin(t * 1.1) * 0.02, prog(t, sc.t + 0.65, sc.t + 1.05), 0, { pad: 12, bottom: 12 });
-  card(PH.p8, 1580, 780, 360, 270, -0.06 + Math.sin(t * 0.9) * 0.02, prog(t, sc.t + 0.8, sc.t + 1.2), 0, { pad: 12, bottom: 12, tape: 'rgba(255,211,77,.9)' });
-  card(im, 960, 470, 450, 800, 0.0 + Math.sin(t * 1.4) * 0.012, k, 0, { tape: 'rgba(255,126,182,.9)' });
+  card(PH.p6, 330, 470, 300, 400, -0.1 + Math.sin(t) * 0.02, prog(t, sc.t + 0.4, sc.t + 0.8), 0, { pad: 12, bottom: 12, tape: 'rgba(124,200,255,.85)' });
+  card(PH.p9, 300, 860, 230, 306, 0.07 + Math.sin(t * 1.2) * 0.02, prog(t, sc.t + 0.55, sc.t + 0.95), 0, { pad: 10, bottom: 10, tape: 'rgba(255,126,182,.85)' });
+  card(PH.p10, 1600, 360, 380, 285, 0.09 + Math.sin(t * 1.1) * 0.02, prog(t, sc.t + 0.7, sc.t + 1.1), 0, { pad: 12, bottom: 12 });
+  card(PH.p8, 1580, 740, 360, 270, -0.06 + Math.sin(t * 0.9) * 0.02, prog(t, sc.t + 0.85, sc.t + 1.25), 0, { pad: 12, bottom: 12, tape: 'rgba(255,211,77,.9)' });
+  card(im, 960, 470, 450, 800, Math.sin(t * 1.4) * 0.012, k, 0, { tape: 'rgba(255,126,182,.9)' });
   sparkles(t, 960, 470, 460, k);
-  // 끝 타이틀
   const endK = prog(t, l.e + 0.2, l.e + 0.6);
   if (endK > 0) {
     ctx.save(); ctx.globalAlpha = endK * 0.88; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.restore();
-    bounceTitle(t, l.e + 0.3, '행복한 설아', 500, 190);
+    bounceTitle(t, l.e + 0.3, '행복한 설아', 480, 190);
     const k2 = prog(t, l.e + 1.0, l.e + 1.4);
-    if (k2 > 0) { ctx.save(); ctx.globalAlpha = k2; ctx.translate(W / 2, 640); ctx.scale(back(k2), back(k2)); ctx.fillStyle = C.leaf; rrect(-300, -55, 600, 110, 55); ctx.fill(); txt('충신유치원 🌿', 0, 20, 60, '#fff', 'center', null, 0, 0.05); ctx.restore(); }
+    if (k2 > 0) {
+      ctx.save(); ctx.globalAlpha = k2; ctx.translate(W / 2, 640); ctx.scale(back(k2), back(k2)); ctx.fillStyle = C.leaf; rrect(-520, -55, 1040, 110, 55); ctx.fill();
+      txt('📍 양주 기산 저수지  ·  장흥 조각공원', 0, 18, 50, '#fff', 'center', null, 0, 0.05); ctx.restore();
+    }
+    const k3 = prog(t, l.e + 1.5, l.e + 1.9);
+    if (k3 > 0) { ctx.save(); ctx.globalAlpha = k3; txt('할아버지 · 할머니와 함께한 초록빛 하루 💚', W / 2, 790, 48, C.ink, 'center', null, 0, 0.04); ctx.restore(); }
     confetti(t, l.e + 0.35, 150, 9);
   }
-  chip(t, sc, '💚', '오늘도 쑥쑥', '#ff5fa2');
+  if (endK < 1) chip(t, sc, '💚', '행복한 하루', '#ff5fa2');
 }
-const RENDER = { intro: sIntro, grand: sGrand, teacher: sTeacher, nature: sNature, finale: sFinale };
+const RENDER = { intro: sIntro, res1: sRes1, res2: sRes2, park1: sPark1, park2: sPark2, finale: sFinale };
 window.renderFrame = async function (t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   const sc = TL.scenes.find(s => t >= s.t && t < s.e) || TL.scenes[TL.scenes.length - 1];
