@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const FPS = 30, DUR = 240;
+const FPS = 30, DUR = 210;
 const dir = __dirname;
 const audio = path.join(dir, 'audio.wav');
 const out = path.join(dir, 'reformation_opening.mp4');
